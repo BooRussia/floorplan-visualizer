@@ -1,0 +1,85 @@
+// Furniture catalog: default real-world dimensions in inches.
+// w = width (local x), d = depth (local y), h = height.
+
+export interface CatalogItem {
+  kind: string
+  name: string
+  w: number
+  d: number
+  h: number
+}
+
+export interface CatalogCategory {
+  name: string
+  items: CatalogItem[]
+}
+
+export const CATALOG: CatalogCategory[] = [
+  {
+    name: 'Kitchen',
+    items: [
+      { kind: 'base-cabinet', name: 'Base cabinet', w: 36, d: 24, h: 36 },
+      { kind: 'kitchen-island', name: 'Island', w: 66, d: 36, h: 36 },
+      { kind: 'kitchen-sink', name: 'Sink cabinet', w: 33, d: 24, h: 36 },
+      { kind: 'stove', name: 'Range / stove', w: 30, d: 26, h: 36 },
+      { kind: 'fridge', name: 'Refrigerator', w: 36, d: 30, h: 70 },
+      { kind: 'dishwasher', name: 'Dishwasher', w: 24, d: 24, h: 34 },
+      { kind: 'washer', name: 'Washer', w: 27, d: 28, h: 38 },
+      { kind: 'dryer', name: 'Dryer', w: 27, d: 28, h: 38 },
+    ],
+  },
+  {
+    name: 'Bathroom',
+    items: [
+      { kind: 'toilet', name: 'Toilet', w: 20, d: 28, h: 30 },
+      { kind: 'vanity', name: 'Vanity sink', w: 30, d: 21, h: 34 },
+      { kind: 'pedestal-sink', name: 'Pedestal sink', w: 22, d: 18, h: 34 },
+      { kind: 'shower', name: 'Shower', w: 36, d: 36, h: 80 },
+      { kind: 'bathtub', name: 'Bathtub', w: 60, d: 30, h: 22 },
+    ],
+  },
+  {
+    name: 'Bedroom',
+    items: [
+      { kind: 'bed-queen', name: 'Queen bed', w: 60, d: 80, h: 26 },
+      { kind: 'bed-king', name: 'King bed', w: 76, d: 80, h: 26 },
+      { kind: 'bed-twin', name: 'Twin bed', w: 38, d: 75, h: 24 },
+      { kind: 'nightstand', name: 'Nightstand', w: 20, d: 16, h: 24 },
+      { kind: 'dresser', name: 'Dresser', w: 60, d: 18, h: 32 },
+      { kind: 'wardrobe', name: 'Wardrobe', w: 48, d: 24, h: 78 },
+      { kind: 'desk', name: 'Desk', w: 48, d: 24, h: 30 },
+      { kind: 'office-chair', name: 'Desk chair', w: 22, d: 22, h: 36 },
+    ],
+  },
+  {
+    name: 'Living room',
+    items: [
+      { kind: 'sofa', name: 'Sofa', w: 84, d: 36, h: 32 },
+      { kind: 'loveseat', name: 'Loveseat', w: 60, d: 36, h: 32 },
+      { kind: 'armchair', name: 'Armchair', w: 34, d: 34, h: 32 },
+      { kind: 'coffee-table', name: 'Coffee table', w: 48, d: 24, h: 17 },
+      { kind: 'end-table', name: 'End table', w: 20, d: 20, h: 22 },
+      { kind: 'tv-stand', name: 'TV + stand', w: 60, d: 16, h: 44 },
+      { kind: 'floor-lamp', name: 'Floor lamp', w: 16, d: 16, h: 62 },
+      { kind: 'table-lamp', name: 'Table lamp', w: 12, d: 12, h: 22 },
+      { kind: 'bookshelf', name: 'Bookshelf', w: 36, d: 12, h: 72 },
+      { kind: 'rug', name: 'Area rug', w: 96, d: 60, h: 1 },
+      { kind: 'plant', name: 'Plant', w: 18, d: 18, h: 52 },
+    ],
+  },
+  {
+    name: 'Dining',
+    items: [
+      { kind: 'dining-table', name: 'Dining table', w: 72, d: 38, h: 30 },
+      { kind: 'round-table', name: 'Round table', w: 48, d: 48, h: 30 },
+      { kind: 'chair', name: 'Chair', w: 18, d: 20, h: 34 },
+      { kind: 'bar-stool', name: 'Bar stool', w: 16, d: 16, h: 30 },
+    ],
+  },
+]
+
+const byKind = new Map<string, CatalogItem>()
+for (const cat of CATALOG) for (const it of cat.items) byKind.set(it.kind, it)
+
+export const catalogItem = (kind: string): CatalogItem =>
+  byKind.get(kind) ?? { kind, name: kind, w: 24, d: 24, h: 24 }
