@@ -578,6 +578,41 @@ body {
   outline: none;
 }
 
+.new-building {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.new-building-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-3);
+}
+
+.new-building input {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+}
+
+.new-building input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
 .box-dialog {
   position: absolute;
   z-index: 30;

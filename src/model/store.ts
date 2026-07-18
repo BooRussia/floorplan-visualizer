@@ -61,7 +61,7 @@ interface StoreState {
   enterBuilding: (index: number) => void
   exitToPlot: () => void
   setPlotSize: (w: number, d: number) => void
-  addBuilding: (x?: number, y?: number) => void
+  addBuilding: (opts?: { w?: number; d?: number; x?: number; y?: number; name?: string }) => void
   updateBuilding: (id: string, patch: Partial<Pick<Building, 'name' | 'x' | 'y' | 'rot'>>) => void
   deleteBuilding: (id: string) => void
 
@@ -183,15 +183,30 @@ export const useStore = create<StoreState>((set, get) => {
         },
       }))
     },
-    addBuilding: (x, y) => {
+    addBuilding: (opts) => {
       const { project, checkpoint } = get()
       if (project.buildings.length >= MAX_BUILDINGS) return
       checkpoint()
-      const b = emptyBuilding(
-        project.buildings.length + 1,
-        x ?? project.plotW / 2,
-        y ?? project.plotD / 2
-      )
+      const w = opts?.w
+      const d = opts?.d
+      // when a footprint is given, center the building's shell on the drop point
+      const cx = opts?.x ?? project.plotW / 2
+      const cy = opts?.y ?? project.plotD / 2
+      const ox = w && d ? cx - w / 2 : cx
+      const oy = w && d ? cy - d / 2 : cy
+      const b = emptyBuilding(project.buildings.length + 1, ox, oy)
+      if (opts?.name) b.name = opts.name
+      if (w && d) {
+        const mk = (ax: number, ay: number, bx: number, by: number): Wall => ({
+          id: uid('wall'),
+          a: { x: ax, y: ay },
+          b: { x: bx, y: by },
+          thickness: 6,
+          bulge: 0,
+          height: b.floors[0].height,
+        })
+        b.floors[0].walls = [mk(0, 0, w, 0), mk(w, 0, w, d), mk(w, d, 0, d), mk(0, d, 0, 0)]
+      }
       set((s) => ({
         project: { ...s.project, buildings: [...s.project.buildings, b] },
         selection: { kind: 'building', id: b.id },

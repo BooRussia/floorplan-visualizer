@@ -96,6 +96,7 @@ export default function PropertiesPanel() {
   const st = useStore.getState()
   const isPlot = mode.scope === 'plot'
   const floorCount = isPlot ? 1 : project.buildings[(mode as any).index].floors.length
+  const [newB, setNewB] = useState<{ w: string; d: string } | null>(null)
 
   if (!selection && isPlot) {
     const acres = (project.plotW * project.plotD) / SQIN_PER_ACRE
@@ -129,11 +130,72 @@ export default function PropertiesPanel() {
             <span>Landscape items</span>
             <b>{project.site.furniture.length}</b>
           </div>
-          {project.buildings.length < MAX_BUILDINGS && (
-            <button className="mini-btn" onClick={() => st.addBuilding()}>
-              ＋ Add building
-            </button>
-          )}
+          {project.buildings.length < MAX_BUILDINGS &&
+            (newB ? (
+              <div className="new-building">
+                <span className="new-building-title">New building footprint</span>
+                <div className="prop-row">
+                  {(
+                    [
+                      [24, 24],
+                      [20, 30],
+                      [30, 40],
+                      [40, 60],
+                    ] as [number, number][]
+                  ).map(([w, d]) => (
+                    <button
+                      key={`${w}x${d}`}
+                      className="mini-btn"
+                      onClick={() => {
+                        st.addBuilding({ w: w * 12, d: d * 12 })
+                        setNewB(null)
+                      }}
+                    >
+                      {w}×{d}
+                    </button>
+                  ))}
+                </div>
+                <div className="prop-row">
+                  <input
+                    aria-label="Building width"
+                    value={newB.w}
+                    onChange={(e) => setNewB({ ...newB, w: e.target.value })}
+                    onKeyDown={(e) => e.stopPropagation()}
+                    style={{ width: 62 }}
+                  />
+                  <span>×</span>
+                  <input
+                    aria-label="Building length"
+                    value={newB.d}
+                    onChange={(e) => setNewB({ ...newB, d: e.target.value })}
+                    onKeyDown={(e) => e.stopPropagation()}
+                    style={{ width: 62 }}
+                  />
+                </div>
+                <div className="prop-row">
+                  <button className="mini-btn" onClick={() => setNewB(null)}>
+                    Cancel
+                  </button>
+                  <button
+                    className="box-dialog-create"
+                    onClick={() => {
+                      const w = parseLen(newB.w)
+                      const d = parseLen(newB.d)
+                      if (w != null && d != null && w >= 24 && d >= 24) {
+                        st.addBuilding({ w, d })
+                        setNewB(null)
+                      }
+                    }}
+                  >
+                    Create
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button className="mini-btn" onClick={() => setNewB({ w: "40'", d: "30'" })}>
+                ＋ Add building
+              </button>
+            ))}
           <p className="props-tip">
             Tip: a 10-acre square plot is about 660' × 660'. Drag buildings to place them;
             double-click one to design its floors. Draw fences with <kbd>W</kbd>, drop
@@ -181,6 +243,20 @@ export default function PropertiesPanel() {
               </button>
             </div>
           </label>
+          {(() => {
+            const pts = b.floors[0].walls.flatMap((w) => [w.a, w.b])
+            if (!pts.length) return null
+            const xs = pts.map((p) => p.x)
+            const ys = pts.map((p) => p.y)
+            const fw = Math.max(...xs) - Math.min(...xs)
+            const fd = Math.max(...ys) - Math.min(...ys)
+            return (
+              <div className="props-stat">
+                <span>Footprint</span>
+                <b>{`${fmtLenShort(fw)} × ${fmtLenShort(fd)}`}</b>
+              </div>
+            )
+          })()}
           <div className="props-stat">
             <span>Floors</span>
             <b>{b.floors.length}</b>
