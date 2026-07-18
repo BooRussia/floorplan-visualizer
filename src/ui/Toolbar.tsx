@@ -9,6 +9,7 @@ const DOOR_TYPES: { type: OpeningType; label: string }[] = [
   { type: 'sliding', label: 'Sliding glass' },
   { type: 'bifold', label: 'Bifold' },
   { type: 'opening', label: 'Cased opening' },
+  { type: 'garage', label: 'Garage door' },
 ]
 
 function ToolButton({

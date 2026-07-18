@@ -22,7 +22,7 @@ to the browser (localStorage) and can be exported/imported as JSON from the tool
 | --- | --- | --- |
 | Select / move | `V` | Click anything to select; drag to move. Arrow keys nudge 1" (Shift = 12"). |
 | Wall | `W` | Click to place points, chaining as you go. Type a length (`12'6"`, `150"`, `12.5'`) + Enter while drawing for an exact segment. Click the first point again to close a room. Enter/Esc ends the chain. Walls snap to endpoints, existing walls, 45° angles and a 1" grid (hold Alt for free angles). |
-| Doors | `D` | Single, double, sliding glass, bifold, cased opening — pick from the ▾ menu. Hover a wall and click to place; drag along (or across to another) wall later. Flip swing/hinge in the right panel. |
+| Doors | `D` | Single, double, sliding glass, bifold, cased opening, garage door — pick from the ▾ menu. Hover a wall and click to place; drag along (or across to another) wall later. Flip swing/hinge in the right panel. Garage doors get quick width presets (8'/9'/16'/18'), free-form width, and an adjustable door height that carries into 3D. |
 | Window | `N` | Same placement flow as doors. |
 | Label | `T` | Click to add a room label; double-click a label to rename. |
 | Measure | `M` | Drop Photoshop-style reference marks. Each mark shows dotted distance rays to the four nearest walls, and walls snap to marks while drawing. "✕ Marks" clears them. |
@@ -34,8 +34,9 @@ to the browser (localStorage) and can be exported/imported as JSON from the tool
   (e.g. `25'1" ⟷ 30'11"`) so you can hit an exact spot on a wall.
 - **Curved walls** — select a wall and drag the round midpoint handle to bow it.
   "Straighten" resets it.
-- **Furniture** — 35+ items (kitchen, bathroom, bedroom, living, dining) in the left
-  library. Click an item then click the plan (hold Shift to place several). Selected
+- **Furniture** — 40+ items (kitchen, bathroom, bedroom, living, dining, garage) in the
+  left library — including cars, a pickup, camper trailer, boat and jet ski on trailers,
+  a pegboard workbench, and a rolling tool chest for garage layouts. Click an item then click the plan (hold Shift to place several). Selected
   furniture gets corner resize handles and a rotate handle; `R` rotates 90°,
   `⌘D` duplicates.
 - **Floors** — up to 3 stories via the numbered tabs in the toolbar. Each floor has its

@@ -95,4 +95,10 @@ export const MAT = {
   }),
   rug: std('#e7e4de', 1),
   rugBorder: std('#cdc9c0', 1),
+  carPaint: std('#8fa8bf', 0.35, 0.6),
+  carDark: std('#3c4249', 0.5, 0.3),
+  tire: std('#26272b', 0.9),
+  toolRed: std('#b8412f', 0.45, 0.25),
+  hullNavy: std('#3d5a80', 0.4, 0.3),
+  camperShell: std('#f2f1ec', 0.5, 0.15),
 }

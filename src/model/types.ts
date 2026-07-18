@@ -22,6 +22,7 @@ export type OpeningType =
   | 'bifold'
   | 'opening'
   | 'window'
+  | 'garage'
 
 export interface Opening {
   id: string
@@ -34,6 +35,8 @@ export interface Opening {
   flipSwing: boolean
   /** Hinge on the other jamb */
   flipHinge: boolean
+  /** Head height in inches (garage doors); falls back to the standard head height */
+  height?: number
 }
 
 export interface Furniture {

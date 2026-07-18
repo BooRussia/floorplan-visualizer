@@ -154,6 +154,52 @@ function buildDoorLeaves(group: THREE.Group, w: Wall, o: Opening, s0: number, s1
   }
 }
 
+function buildGarageDoor(
+  group: THREE.Group,
+  w: Wall,
+  o: Opening,
+  s0: number,
+  s1: number,
+  head: number
+) {
+  const mid = alongWall(w, (s0 + s1) / 2)
+  const ang = Math.atan2(w.b.y - w.a.y, w.b.x - w.a.x)
+  const holder = new THREE.Group()
+  holder.position.set(mid.x, 0, mid.y)
+  holder.rotation.y = -ang
+  const width = s1 - s0
+  const side = o.flipSwing ? -1 : 1 // which side of the wall the garage interior is on
+
+  // sectional panels
+  const panels = 4
+  const ph = (head - 1) / panels
+  for (let i = 0; i < panels; i++) {
+    const panel = mesh(new THREE.BoxGeometry(width - 3, ph - 0.7, 1.8), MAT.doorLeaf)
+    panel.position.set(0, ph * i + ph / 2 + 0.5, 0)
+    holder.add(panel)
+  }
+  // window row on the top panel
+  const winCount = Math.max(2, Math.round(width / 48))
+  const winW = Math.min(18, (width - 12) / winCount - 4)
+  for (let i = 0; i < winCount; i++) {
+    const x = -width / 2 + ((i + 0.5) * width) / winCount
+    const glass = mesh(new THREE.BoxGeometry(winW, ph * 0.45, 0.6), MAT.glass, false)
+    glass.position.set(x, head - ph / 2 - 0.2, 1)
+    holder.add(glass)
+  }
+  // handle
+  const handle = mesh(new THREE.BoxGeometry(8, 1.4, 1), MAT.steel)
+  handle.position.set(0, ph * 1.05, -side * 1.5)
+  holder.add(handle)
+  // vertical tracks just inside the garage
+  for (const fx of [-width / 2 + 1.5, width / 2 - 1.5]) {
+    const track = mesh(new THREE.BoxGeometry(2, head + 6, 1.2), MAT.steel)
+    track.position.set(fx, (head + 6) / 2, side * (w.thickness / 2 + 1.4))
+    holder.add(track)
+  }
+  group.add(holder)
+}
+
 function buildWindow(group: THREE.Group, w: Wall, o: Opening, s0: number, s1: number) {
   const a = alongWall(w, s0)
   const b = alongWall(w, s1)
@@ -207,11 +253,18 @@ function buildWall(group: THREE.Group, w: Wall, openings: Opening[]) {
     if (s0 > cursor) {
       wallBox(group, alongWall(w, cursor), alongWall(w, s0), 0, H, th, MAT.wall, cursor === 0 ? ext : 0, 0)
     }
-    const head = o.type === 'window' ? Math.min(WINDOW_HEAD, H - 6) : Math.min(DOOR_HEAD, H - 4)
+    const head =
+      o.type === 'window'
+        ? Math.min(WINDOW_HEAD, H - 6)
+        : o.type === 'garage'
+          ? Math.min(o.height ?? 84, H - 3)
+          : Math.min(DOOR_HEAD, H - 4)
     wallBox(group, alongWall(w, s0), alongWall(w, s1), head, H, th, MAT.wall)
     if (o.type === 'window') {
       wallBox(group, alongWall(w, s0), alongWall(w, s1), 0, WINDOW_SILL, th, MAT.wall)
       buildWindow(group, w, o, s0, s1)
+    } else if (o.type === 'garage') {
+      buildGarageDoor(group, w, o, s0, s1, head)
     } else {
       buildDoorLeaves(group, w, o, s0, s1)
     }

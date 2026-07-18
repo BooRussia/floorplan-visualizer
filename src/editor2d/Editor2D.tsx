@@ -36,6 +36,7 @@ const OPENING_DEFAULTS: Record<string, number> = {
   bifold: 48,
   opening: 42,
   window: 36,
+  garage: 192, // 16' double garage door
 }
 
 interface Viewport {
@@ -465,6 +466,7 @@ export default function Editor2D() {
               type: tool.opening,
               flipSwing: false,
               flipHinge: false,
+              ...(tool.opening === 'garage' ? { height: 84 } : {}),
             })
           }
         }

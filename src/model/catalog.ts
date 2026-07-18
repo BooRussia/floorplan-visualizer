@@ -83,6 +83,18 @@ export const CATALOG: CatalogCategory[] = [
       { kind: 'bar-stool', name: 'Bar stool', w: 16, d: 16, h: 30 },
     ],
   },
+  {
+    name: 'Garage',
+    items: [
+      { kind: 'car', name: 'Car', w: 70, d: 178, h: 56 },
+      { kind: 'pickup', name: 'Pickup truck', w: 76, d: 220, h: 72 },
+      { kind: 'camper', name: 'Camper trailer', w: 96, d: 260, h: 104 },
+      { kind: 'boat-trailer', name: 'Boat + trailer', w: 84, d: 250, h: 88 },
+      { kind: 'jet-ski', name: 'Jet ski + trailer', w: 48, d: 130, h: 46 },
+      { kind: 'workbench', name: 'Workbench', w: 72, d: 25, h: 38 },
+      { kind: 'tool-chest', name: 'Tool chest', w: 42, d: 20, h: 44 },
+    ],
+  },
 ]
 
 const byKind = new Map<string, CatalogItem>()

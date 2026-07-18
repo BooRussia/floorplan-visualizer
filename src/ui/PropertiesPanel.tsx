@@ -44,7 +44,15 @@ const OPENING_LABELS: Record<OpeningType, string> = {
   bifold: 'Bifold door',
   opening: 'Cased opening',
   window: 'Window',
+  garage: 'Garage door',
 }
+
+const GARAGE_WIDTHS = [
+  { label: `8'`, inches: 96 },
+  { label: `9'`, inches: 108 },
+  { label: `16'`, inches: 192 },
+  { label: `18'`, inches: 216 },
+]
 
 export default function PropertiesPanel() {
   const selection = useStore((s) => s.selection)
@@ -213,9 +221,35 @@ export default function PropertiesPanel() {
             value={o.width}
             onCommit={(v) => {
               st.checkpoint()
-              st.updateOpening(o.id, { width: Math.min(240, v) })
+              st.updateOpening(o.id, { width: Math.min(300, v) })
             }}
           />
+          {o.type === 'garage' && (
+            <>
+              <div className="prop-row">
+                {GARAGE_WIDTHS.map((g) => (
+                  <button
+                    key={g.label}
+                    className="mini-btn"
+                    onClick={() => {
+                      st.checkpoint()
+                      st.updateOpening(o.id, { width: g.inches })
+                    }}
+                  >
+                    {g.label}
+                  </button>
+                ))}
+              </div>
+              <LenInput
+                label="Door height"
+                value={o.height ?? 84}
+                onCommit={(v) => {
+                  st.checkpoint()
+                  st.updateOpening(o.id, { height: Math.min(180, Math.max(48, v)) })
+                }}
+              />
+            </>
+          )}
           {isDoor && (
             <div className="prop-field">
               <span>Swing</span>

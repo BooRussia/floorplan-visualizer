@@ -437,10 +437,199 @@ function staircase(g: G, w: number, d: number, h: number) {
   g.add(rail)
 }
 
+// ---------- garage & vehicles ----------
+// Vehicles face -z (nose toward the 2D glyph's arrow/bow side).
+
+function wheel(g: G, r: number, x: number, y: number, z: number, width = 0.35) {
+  const t = new THREE.Mesh(new THREE.CylinderGeometry(r, r, r * width * 2, 18), MAT.tire)
+  t.rotation.z = Math.PI / 2
+  t.position.set(x, y, z)
+  t.castShadow = true
+  g.add(t)
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.45, r * 0.45, r * width * 2 + 0.4, 12), MAT.steel)
+  hub.rotation.z = Math.PI / 2
+  hub.position.set(x, y, z)
+  g.add(hub)
+}
+
+function car(g: G, w: number, d: number, h: number) {
+  const bw = w * 0.86
+  const wheelR = h * 0.16
+  const bodyY = wheelR * 0.9
+  const bodyH = h * 0.42
+  // lower body
+  box(g, MAT.carPaint, bw, bodyH, d * 0.96, 0, bodyY)
+  // hood + trunk taper
+  box(g, MAT.carPaint, bw * 0.96, bodyH * 0.5, d * 0.16, 0, bodyY + bodyH * 0.2, -d * 0.42)
+  // cabin with glass band
+  const cabD = d * 0.48
+  box(g, MAT.carPaint, bw * 0.88, h * 0.3, cabD, 0, bodyY + bodyH, -d * 0.02)
+  box(g, MAT.glass, bw * 0.88 + 0.4, h * 0.17, cabD * 0.92, 0, bodyY + bodyH + h * 0.04, -d * 0.02)
+  // lights
+  box(g, MAT.white, bw * 0.7, 2.5, 1.2, 0, bodyY + bodyH * 0.55, -d * 0.48)
+  box(g, MAT.toolRed, bw * 0.7, 2.2, 1.2, 0, bodyY + bodyH * 0.55, d * 0.475)
+  for (const [x, z] of [
+    [-bw / 2, -d * 0.3],
+    [bw / 2, -d * 0.3],
+    [-bw / 2, d * 0.3],
+    [bw / 2, d * 0.3],
+  ]) {
+    wheel(g, wheelR, x as number, wheelR, z as number)
+  }
+}
+
+function pickup(g: G, w: number, d: number, h: number) {
+  const bw = w * 0.88
+  const wheelR = h * 0.18
+  const bodyY = wheelR
+  const bodyH = h * 0.34
+  box(g, MAT.carPaint, bw, bodyH, d * 0.96, 0, bodyY) // frame body
+  box(g, MAT.carPaint, bw * 0.94, bodyH * 0.6, d * 0.2, 0, bodyY + bodyH * 0.3, -d * 0.38) // hood
+  // cab
+  box(g, MAT.carPaint, bw * 0.9, h * 0.36, d * 0.24, 0, bodyY + bodyH, -d * 0.14)
+  box(g, MAT.glass, bw * 0.9 + 0.4, h * 0.19, d * 0.21, 0, bodyY + bodyH + h * 0.06, -d * 0.14)
+  // open bed walls
+  const bedZ = d * 0.24
+  const bedD = d * 0.42
+  box(g, MAT.carPaint, bw, bodyH * 0.9, 2, 0, bodyY + bodyH * 0.5, bedZ + bedD / 2) // tailgate
+  box(g, MAT.carPaint, 2, bodyH * 0.9, bedD, -bw / 2 + 1, bodyY + bodyH * 0.5, bedZ)
+  box(g, MAT.carPaint, 2, bodyH * 0.9, bedD, bw / 2 - 1, bodyY + bodyH * 0.5, bedZ)
+  box(g, MAT.carDark, bw - 4, 1, bedD, 0, bodyY + bodyH * 0.35, bedZ) // bed floor
+  for (const [x, z] of [
+    [-bw / 2, -d * 0.3],
+    [bw / 2, -d * 0.3],
+    [-bw / 2, d * 0.32],
+    [bw / 2, d * 0.32],
+  ]) {
+    wheel(g, wheelR, x as number, wheelR, z as number, 0.4)
+  }
+}
+
+function camper(g: G, w: number, d: number, h: number) {
+  const bodyD = d - 18 // leave room for the hitch tongue at -z
+  const clearance = 14
+  const bodyH = h - clearance
+  const cz = 9 // body center shifted back
+  box(g, MAT.camperShell, w, bodyH, bodyD, 0, clearance, cz)
+  // rounded-ish nose cap
+  box(g, MAT.camperShell, w * 0.86, bodyH * 0.9, 8, 0, clearance + bodyH * 0.05, cz - bodyD / 2 - 3)
+  // accent stripe + door + window
+  box(g, MAT.accent2, w + 0.4, 6, bodyD * 0.98, 0, clearance + bodyH * 0.45, cz)
+  box(g, MAT.frame, 1, bodyH * 0.62, 24, w / 2 - 0.3, clearance + 2, cz + bodyD * 0.18)
+  box(g, MAT.glass, 1, 14, 22, w / 2 + 0.1, clearance + bodyH * 0.55, cz - bodyD * 0.22)
+  box(g, MAT.glass, 1, 14, 22, -w / 2 - 0.1, clearance + bodyH * 0.55, cz)
+  // roof AC unit
+  box(g, MAT.frame, 16, 6, 22, 0, clearance + bodyH, cz)
+  // hitch tongue + jack
+  const tongue = new THREE.Mesh(new THREE.BoxGeometry(3, 3, 26), MAT.steel)
+  tongue.position.set(0, clearance - 2, -d / 2 + 13)
+  tongue.castShadow = true
+  g.add(tongue)
+  cyl(g, MAT.steel, 1, 1, clearance - 2, 0, 0, -d / 2 + 6)
+  // tandem wheels
+  for (const z of [d * 0.1, d * 0.24]) {
+    wheel(g, 13, -w / 2 + 2, 13, z, 0.3)
+    wheel(g, 13, w / 2 - 2, 13, z, 0.3)
+  }
+}
+
+function boatTrailer(g: G, w: number, d: number, h: number) {
+  const bw = w * 0.8
+  const deckY = h * 0.34
+  const hullH = h * 0.3
+  const hullD = d * 0.82
+  const hullZ = d * 0.06
+  // trailer frame
+  box(g, MAT.steel, 3, 2.5, d * 0.9, -bw * 0.3, deckY - hullH * 0.6, 0)
+  box(g, MAT.steel, 3, 2.5, d * 0.9, bw * 0.3, deckY - hullH * 0.6, 0)
+  box(g, MAT.steel, 3, 2.5, d * 0.55, 0, deckY - hullH * 0.55, -d * 0.28)
+  wheel(g, 10, -w / 2 + 2, 10, d * 0.2, 0.32)
+  wheel(g, 10, w / 2 - 2, 10, d * 0.2, 0.32)
+  // hull: stern block + tapered bow (scaled box)
+  box(g, MAT.hullNavy, bw, hullH, hullD * 0.62, 0, deckY, hullZ + hullD * 0.19)
+  const bow = new THREE.Mesh(new THREE.BoxGeometry(bw, hullH, hullD * 0.42), MAT.hullNavy)
+  bow.position.set(0, deckY + hullH / 2, hullZ - hullD * 0.31)
+  bow.scale.x = 0.55
+  bow.rotation.y = 0
+  bow.castShadow = true
+  g.add(bow)
+  // deck + windshield + motor
+  box(g, MAT.white, bw * 0.92, 3, hullD * 0.58, 0, deckY + hullH, hullZ + hullD * 0.2)
+  box(g, MAT.glass, bw * 0.8, h * 0.14, 1, 0, deckY + hullH + 3, hullZ - hullD * 0.09)
+  box(g, MAT.carDark, bw * 0.22, h * 0.2, 6, 0, deckY + hullH, hullZ + hullD * 0.52)
+  // seats
+  box(g, MAT.fabricDark, bw * 0.7, 6, hullD * 0.2, 0, deckY + hullH + 2, hullZ + hullD * 0.18)
+}
+
+function jetSki(g: G, w: number, d: number, h: number) {
+  const jw = w * 0.62
+  const deckY = h * 0.3
+  // mini trailer
+  box(g, MAT.steel, 2.5, 2, d * 0.85, -jw * 0.35, deckY - 4, 0)
+  box(g, MAT.steel, 2.5, 2, d * 0.85, jw * 0.35, deckY - 4, 0)
+  wheel(g, 7, -w / 2 + 1.5, 7, d * 0.22, 0.3)
+  wheel(g, 7, w / 2 - 1.5, 7, d * 0.22, 0.3)
+  // hull with tapered nose
+  box(g, MAT.accent2, jw, h * 0.24, d * 0.55, 0, deckY, d * 0.12)
+  const nose = new THREE.Mesh(new THREE.BoxGeometry(jw, h * 0.2, d * 0.32), MAT.accent2)
+  nose.position.set(0, deckY + h * 0.11, -d * 0.24)
+  nose.scale.x = 0.6
+  nose.castShadow = true
+  g.add(nose)
+  // seat + handlebars
+  box(g, MAT.dark, jw * 0.5, h * 0.16, d * 0.4, 0, deckY + h * 0.22, d * 0.14)
+  cyl(g, MAT.steel, 0.6, 0.6, h * 0.16, 0, deckY + h * 0.2, -d * 0.16)
+  const bars = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, jw * 0.6, 8), MAT.steel)
+  bars.rotation.z = Math.PI / 2
+  bars.position.set(0, deckY + h * 0.38, -d * 0.16)
+  g.add(bars)
+}
+
+function workbench(g: G, w: number, d: number, h: number) {
+  box(g, MAT.woodDark, w, 2.2, d, 0, h - 2.2) // butcher top
+  legs(g, w, d, h - 2.2, 2, 2.4, MAT.steel)
+  box(g, MAT.wood, w - 6, 1.4, d - 4, 0, h * 0.3) // lower shelf
+  // pegboard back rising above the top
+  box(g, MAT.frame, w, h * 0.55, 1, 0, h, -d / 2 + 0.5)
+  // a few hanging tools
+  box(g, MAT.steel, 1.4, 7, 0.8, -w * 0.3, h + h * 0.18, -d / 2 + 1.2)
+  box(g, MAT.toolRed, 2.2, 5, 0.8, -w * 0.12, h + h * 0.2, -d / 2 + 1.2)
+  box(g, MAT.steel, 1.2, 8, 0.8, w * 0.08, h + h * 0.16, -d / 2 + 1.2)
+  box(g, MAT.carDark, 3, 4, 0.8, w * 0.28, h + h * 0.22, -d / 2 + 1.2)
+  // vise
+  box(g, MAT.steel, 4, 3.5, 5, -w / 2 + 6, h - 0.5, d / 2 - 4)
+}
+
+function toolChest(g: G, w: number, d: number, h: number) {
+  box(g, MAT.toolRed, w, h - 4, d, 0, 4)
+  const rows = Math.max(3, Math.round(h / 10))
+  for (let i = 0; i < rows; i++) {
+    const y = 5.5 + ((i + 0.15) * (h - 10)) / rows
+    box(g, MAT.carDark, w - 4, 1, 0.5, 0, y, d / 2 + 0.1)
+  }
+  box(g, MAT.steel, w - 6, 1.2, 1.2, 0, h - 2.5, d / 2 + 0.4) // top rail handle
+  // casters
+  for (const [x, z] of [
+    [-w / 2 + 4, -d / 2 + 3],
+    [w / 2 - 4, -d / 2 + 3],
+    [-w / 2 + 4, d / 2 - 3],
+    [w / 2 - 4, d / 2 - 3],
+  ]) {
+    cyl(g, MAT.tire, 2, 2, 3.4, x as number, 0.3, z as number, 10)
+  }
+}
+
 // ---------- registry ----------
 
 const builders: Record<string, (g: G, w: number, d: number, h: number) => void> = {
   staircase,
+  car,
+  pickup,
+  camper,
+  'boat-trailer': boatTrailer,
+  'jet-ski': jetSki,
+  workbench,
+  'tool-chest': toolChest,
   sofa: (g, w, d, h) => sofa(g, w, d, h, Math.max(2, Math.round(w / 28))),
   loveseat: (g, w, d, h) => sofa(g, w, d, h, 2),
   armchair,

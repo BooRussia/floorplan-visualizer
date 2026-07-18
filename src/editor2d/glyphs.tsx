@@ -374,10 +374,124 @@ export function Glyph({ kind, w, d }: { kind: string; w: number; d: number }) {
           <circle cx={0} cy={0} r={Math.min(hw, hd) * 0.55} style={thinNoFill} />
         </g>
       )
+    case 'car': {
+      const cw = w * 0.86
+      return (
+        <g>
+          <rect x={-cw / 2} y={-hd} width={cw} height={d} rx={Math.min(14, cw * 0.28)} style={thin} />
+          {/* cabin */}
+          <rect
+            x={-cw / 2 + 4}
+            y={-hd + d * 0.28}
+            width={cw - 8}
+            height={d * 0.42}
+            rx={8}
+            style={thinNoFill}
+          />
+          <line x1={-cw / 2 + 4} y1={-hd + d * 0.28} x2={cw / 2 - 4} y2={-hd + d * 0.28} style={thinNoFill} />
+          {/* mirrors */}
+          <rect x={-cw / 2 - 3} y={-hd + d * 0.3} width={3} height={5} rx={1} style={thin} />
+          <rect x={cw / 2} y={-hd + d * 0.3} width={3} height={5} rx={1} style={thin} />
+        </g>
+      )
+    }
+    case 'pickup': {
+      const cw = w * 0.88
+      return (
+        <g>
+          <rect x={-cw / 2} y={-hd} width={cw} height={d} rx={Math.min(10, cw * 0.18)} style={thin} />
+          {/* cab */}
+          <rect x={-cw / 2 + 4} y={-hd + d * 0.3} width={cw - 8} height={d * 0.22} rx={5} style={thinNoFill} />
+          {/* bed */}
+          <rect x={-cw / 2 + 3} y={-hd + d * 0.56} width={cw - 6} height={d * 0.4} rx={2} style={thinNoFill} />
+          <line x1={-cw / 2 + 3} y1={hd - 5} x2={cw / 2 - 3} y2={hd - 5} style={thinNoFill} />
+        </g>
+      )
+    }
+    case 'camper': {
+      return (
+        <g>
+          {/* body with rounded nose at -y, hitch tongue beyond */}
+          <rect x={-hw} y={-hd + 16} width={w} height={d - 16} rx={10} style={thin} />
+          <path d={`M ${-hw * 0.35} ${-hd + 16} L 0 ${-hd} L ${hw * 0.35} ${-hd + 16}`} style={thinNoFill} />
+          <circle cx={0} cy={-hd + 2} r={2.2} style={thinNoFill} />
+          <Rect w={w} d={d - 40} inset={6} style={thinNoFill} />
+          {/* wheels */}
+          <rect x={-hw - 2} y={d * 0.12} width={4} height={16} rx={2} style={softFill} />
+          <rect x={hw - 2} y={d * 0.12} width={4} height={16} rx={2} style={softFill} />
+        </g>
+      )
+    }
+    case 'boat-trailer': {
+      const bw = w * 0.8
+      return (
+        <g>
+          {/* hull: pointed bow at -y */}
+          <path
+            d={`M 0 ${-hd + 6} L ${bw / 2} ${-hd + d * 0.42} L ${bw / 2} ${hd - 10} Q ${bw / 2} ${hd - 4} ${bw / 2 - 6} ${hd - 4} L ${-bw / 2 + 6} ${hd - 4} Q ${-bw / 2} ${hd - 4} ${-bw / 2} ${hd - 10} L ${-bw / 2} ${-hd + d * 0.42} Z`}
+            style={thin}
+          />
+          <path
+            d={`M 0 ${-hd + 16} L ${bw / 2 - 5} ${-hd + d * 0.44} L ${bw / 2 - 5} ${hd - 9} L ${-bw / 2 + 5} ${hd - 9} L ${-bw / 2 + 5} ${-hd + d * 0.44} Z`}
+            style={thinNoFill}
+          />
+          {/* windshield */}
+          <line x1={-bw / 2 + 5} y1={-hd + d * 0.52} x2={bw / 2 - 5} y2={-hd + d * 0.52} style={thinNoFill} />
+          {/* trailer tongue + hitch */}
+          <line x1={0} y1={-hd + 6} x2={0} y2={-hd - 0} style={jambLine} />
+          <circle cx={0} cy={-hd + 1} r={2} style={thinNoFill} />
+          {/* trailer wheels */}
+          <rect x={-hw - 1} y={d * 0.18} width={4} height={14} rx={2} style={softFill} />
+          <rect x={hw - 3} y={d * 0.18} width={4} height={14} rx={2} style={softFill} />
+        </g>
+      )
+    }
+    case 'jet-ski': {
+      const jw = w * 0.62
+      return (
+        <g>
+          <path
+            d={`M 0 ${-hd + 4} L ${jw / 2} ${-hd + d * 0.4} L ${jw / 2 - 2} ${hd - 6} L ${-jw / 2 + 2} ${hd - 6} Z`}
+            style={thin}
+          />
+          {/* seat */}
+          <rect x={-jw * 0.18} y={-hd + d * 0.45} width={jw * 0.36} height={d * 0.42} rx={4} style={softFill} />
+          {/* handlebars */}
+          <line x1={-jw * 0.3} y1={-hd + d * 0.38} x2={jw * 0.3} y2={-hd + d * 0.38} style={thinNoFill} />
+          {/* trailer */}
+          <circle cx={0} cy={-hd + 1} r={1.8} style={thinNoFill} />
+          <rect x={-hw - 1} y={d * 0.2} width={3.5} height={11} rx={1.5} style={softFill} />
+          <rect x={hw - 2.5} y={d * 0.2} width={3.5} height={11} rx={1.5} style={softFill} />
+        </g>
+      )
+    }
+    case 'workbench':
+      return (
+        <g>
+          <Rect w={w} d={d} />
+          <Rect w={w} d={d} inset={2} style={thinNoFill} />
+          {/* vise + tools */}
+          <circle cx={-hw + 8} cy={0} r={2.5} style={thinNoFill} />
+          <rect x={hw - 20} y={-hd + 3} width={14} height={d - 6} rx={1} style={thinNoFill} />
+        </g>
+      )
+    case 'tool-chest': {
+      return (
+        <g>
+          <Rect w={w} d={d} />
+          <line x1={-hw + 3} y1={-hd} x2={-hw + 3} y2={hd} style={thinNoFill} />
+          <line x1={hw - 3} y1={-hd} x2={hw - 3} y2={hd} style={thinNoFill} />
+          <circle cx={-hw / 2} cy={hd - 4} r={1.2} style={{ ...thin, fill: stroke }} />
+          <circle cx={hw / 2} cy={hd - 4} r={1.2} style={{ ...thin, fill: stroke }} />
+        </g>
+      )
+    }
     default:
       return <Rect w={w} d={d} />
   }
 }
+
+const jambLine = { stroke, strokeWidth: 1.3, vectorEffect: 'non-scaling-stroke' as const }
 
 /** Small preview tile used in the palette. */
 export function GlyphPreview({ kind, w, d, size = 46 }: { kind: string; w: number; d: number; size?: number }) {

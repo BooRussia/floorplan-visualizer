@@ -175,6 +175,38 @@ export function OpeningGlyph({
         />
       )
       break
+    case 'garage': {
+      // sectional door panel in the wall plane + dashed overhead-track zone inside
+      const trackDepth = Math.min(o.height ?? 84, o.width * 0.6)
+      inner = (
+        <g transform={`scale(1 ${sy})`}>
+          <rect x={-hw} y={-2} width={o.width} height={4} fill="#ffffff" style={jamb} />
+          <line x1={-hw} y1={0} x2={hw} y2={0} style={arcStyle} />
+          <line
+            x1={-hw + 2}
+            y1={th / 2}
+            x2={-hw + 2}
+            y2={th / 2 + trackDepth}
+            style={{ ...arcStyle, strokeDasharray: '5 4' }}
+          />
+          <line
+            x1={hw - 2}
+            y1={th / 2}
+            x2={hw - 2}
+            y2={th / 2 + trackDepth}
+            style={{ ...arcStyle, strokeDasharray: '5 4' }}
+          />
+          <line
+            x1={-hw + 2}
+            y1={th / 2 + trackDepth}
+            x2={hw - 2}
+            y2={th / 2 + trackDepth}
+            style={{ ...arcStyle, strokeDasharray: '5 4' }}
+          />
+        </g>
+      )
+      break
+    }
   }
 
   return (
