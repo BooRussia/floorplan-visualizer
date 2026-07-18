@@ -22,6 +22,29 @@ export function wallPathD(w: Wall): string {
 }
 
 export function WallShape({ w, selected }: { w: Wall; selected: boolean }) {
+  if (w.fence) {
+    const L = wallLength(w)
+    const posts = Math.max(2, Math.round(L / 96) + 1)
+    const color = selected ? ACCENT : '#52525b'
+    return (
+      <>
+        <path
+          d={wallPathD(w)}
+          stroke={color}
+          strokeWidth={1.6}
+          vectorEffect="non-scaling-stroke"
+          strokeDasharray={w.fence === 'chain' ? '6 3' : undefined}
+          fill="none"
+        />
+        {Array.from({ length: posts }, (_, i) => {
+          const p = wallPointAt(w, i / (posts - 1))
+          return (
+            <circle key={i} cx={p.x} cy={p.y} r={2.2} fill={color} />
+          )
+        })}
+      </>
+    )
+  }
   return (
     <>
       <path

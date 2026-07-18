@@ -1,7 +1,29 @@
 # Floorplan Visualizer
 
-Draw precise 2D floorplans — up to three stories — then generate a clean, textured 3D
-"dollhouse" view of the whole building with one click.
+Design a whole property: set a plot (up to acreage scale), place multiple buildings, draw
+precise multi-story floorplans inside each one, landscape the site with driveways, fences
+and planting — then generate a clean, textured 3D "dollhouse" view of the entire property
+with one click.
+
+## The plot
+
+The editor opens on the **site plan**: a dashed property line around your plot (size it in
+the right panel — it shows square footage/acreage; a 10-acre square is ~660'×660'). On the
+plot you can:
+
+- **Place buildings** (up to 8). Drag to move, rotate from the panel, and
+  **double-click a building to dive into its floor plans** — the breadcrumb takes you back.
+- **Draw fences** with the fence tool (`W` on the plot): privacy, picket, chain-link, or
+  split rail — each renders properly in 3D as posts, rails and boards.
+- **Drop surfaces** from the site library: concrete, asphalt (with center line), gravel,
+  pavers, and mulch beds. They're resizable/rotatable patches with real textures in 3D —
+  layer them into driveways, patios and garden beds.
+- **Landscape** with shade trees, pines, shrubs, flower beds, stepping stones, boulders
+  and a mailbox. Everything places in 2D and can be clicked and dragged in 3D too.
+
+Inside a building, the **floor material paint tool** (`P`) drops a material marker in any
+room — wood, tile, carpet, concrete, or stone — and the whole room gets that floor in 3D
+(rooms are detected automatically from your walls).
 
 ![2D editor → 3D view]
 

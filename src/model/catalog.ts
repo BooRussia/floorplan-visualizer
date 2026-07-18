@@ -84,6 +84,28 @@ export const CATALOG: CatalogCategory[] = [
     ],
   },
   {
+    name: 'Landscape',
+    items: [
+      { kind: 'tree-oak', name: 'Shade tree', w: 220, d: 220, h: 300 },
+      { kind: 'tree-pine', name: 'Pine tree', w: 140, d: 140, h: 340 },
+      { kind: 'shrub', name: 'Shrub', w: 30, d: 30, h: 30 },
+      { kind: 'flower-bed', name: 'Flower bed', w: 90, d: 50, h: 8 },
+      { kind: 'stepping-stone', name: 'Stepping stone', w: 20, d: 16, h: 1 },
+      { kind: 'boulder', name: 'Boulder', w: 50, d: 40, h: 26 },
+      { kind: 'mailbox', name: 'Mailbox', w: 10, d: 14, h: 44 },
+    ],
+  },
+  {
+    name: 'Surfaces',
+    items: [
+      { kind: 'surface-concrete', name: 'Concrete', w: 144, d: 240, h: 1 },
+      { kind: 'surface-asphalt', name: 'Asphalt', w: 144, d: 240, h: 1 },
+      { kind: 'surface-gravel', name: 'Gravel / rock', w: 144, d: 240, h: 1 },
+      { kind: 'surface-pavers', name: 'Pavers', w: 96, d: 192, h: 1 },
+      { kind: 'surface-mulch', name: 'Mulch bed', w: 120, d: 60, h: 1 },
+    ],
+  },
+  {
     name: 'Garage',
     items: [
       { kind: 'car', name: 'Car', w: 70, d: 178, h: 56 },

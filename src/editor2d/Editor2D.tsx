@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useActiveFloor, useStore } from '../model/store'
-import type { Floor, Pt, Wall } from '../model/types'
+import { floorFor, useActiveFloor, useStore } from '../model/store'
+import type { FenceType, Floor, FloorMaterial, Pt, Wall } from '../model/types'
 import {
   add,
   closestOnWall,
@@ -28,6 +28,22 @@ import { ACCENT, BG, OpeningGlyph, OpeningHit, WallDim, WallShape, wallPathD } f
 
 const WALL_THICKNESS = 5
 const MEASURE_COLOR = '#0e9488'
+const PLOT_LINE = '#5f7a4e'
+
+export const FENCE_HEIGHTS: Record<FenceType, number> = {
+  privacy: 72,
+  picket: 48,
+  chain: 60,
+  rail: 40,
+}
+
+export const PAINT_COLORS: Record<FloorMaterial, string> = {
+  wood: '#c89b66',
+  tile: '#9fb6bd',
+  carpet: '#b6a9c9',
+  concrete: '#a8a8ab',
+  stone: '#8f8878',
+}
 
 const OPENING_DEFAULTS: Record<string, number> = {
   door: 32,
@@ -76,24 +92,32 @@ type Drag =
   | { mode: 'opening-move'; id: string }
   | { mode: 'label-move'; id: string; offset: Pt }
   | { mode: 'guide-move'; id: string }
+  | { mode: 'paint-move'; id: string }
+  | { mode: 'building-move'; id: string; offset: Pt }
 
 type FloatInput =
   | { kind: 'wall-len'; wallId: string }
   | { kind: 'label'; id: string }
 
 /** Active floor from the store, for use inside event handlers. */
-const fl = (): Floor => {
-  const s = useStore.getState()
-  return s.plan.floors[s.activeFloor]
-}
+const fl = (): Floor => floorFor(useStore.getState())
 
 export default function Editor2D() {
   const floor = useActiveFloor()
+  const mode = useStore((s) => s.mode)
+  const plotW = useStore((s) => s.project.plotW)
+  const plotD = useStore((s) => s.project.plotD)
+  const buildings = useStore((s) => s.project.buildings)
   const activeFloor = useStore((s) => s.activeFloor)
-  const below = useStore((s) => (s.activeFloor > 0 ? s.plan.floors[s.activeFloor - 1] : null))
+  const below = useStore((s) =>
+    s.mode.scope === 'building' && s.activeFloor > 0
+      ? s.project.buildings[s.mode.index].floors[s.activeFloor - 1]
+      : null
+  )
   const tool = useStore((s) => s.tool)
   const selection = useStore((s) => s.selection)
   const showDims = useStore((s) => s.showDims)
+  const isPlot = mode.scope === 'plot'
 
   const wrapRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
@@ -141,16 +165,27 @@ export default function Editor2D() {
 
   const fitView = useCallback(() => {
     const s = useStore.getState()
-    const floor = s.plan.floors[s.activeFloor]
+    const { w: pw, h: ph } = sizeRef.current
+    if (s.mode.scope === 'plot') {
+      const spanX = s.project.plotW + 240
+      const spanY = s.project.plotD + 240
+      setView({
+        cx: s.project.plotW / 2,
+        cy: s.project.plotD / 2,
+        ppi: Math.max(0.03, Math.min(pw / spanX, ph / spanY)),
+      })
+      return
+    }
+    const building = s.project.buildings[s.mode.index]
+    const floor = building.floors[Math.min(s.activeFloor, building.floors.length - 1)]
     const source =
       floor.walls.length || floor.furniture.length
         ? floor
-        : s.plan.floors.find((f) => f.walls.length) ?? floor
+        : building.floors.find((f) => f.walls.length) ?? floor
     const pts: Pt[] = []
     for (const w of source.walls) pts.push(w.a, w.b)
     for (const f of source.furniture) pts.push({ x: f.x, y: f.y })
     const b = planBounds(pts)
-    const { w: pw, h: ph } = sizeRef.current
     if (!b) {
       setView({ cx: 0, cy: 0, ppi: Math.min(pw, ph) / (40 * 12) })
       return
@@ -165,13 +200,22 @@ export default function Editor2D() {
     })
   }, [])
 
-  // Fit saved plan on first mount
+  // Fit on first mount and whenever the edit scope changes (plot ↔ building)
   const didFit = useRef(false)
   useEffect(() => {
     if (didFit.current || !size.w) return
     didFit.current = true
     fitView()
   }, [size.w, fitView])
+  const modeKey = mode.scope === 'plot' ? 'plot' : `b${mode.index}`
+  const lastModeKey = useRef(modeKey)
+  useEffect(() => {
+    if (lastModeKey.current !== modeKey) {
+      lastModeKey.current = modeKey
+      setDraft(null)
+      fitView()
+    }
+  }, [modeKey, fitView, setDraft])
 
   // ---------- coordinate transforms ----------
   const worldFromClient = useCallback((clientX: number, clientY: number): Pt => {
@@ -382,6 +426,16 @@ export default function Editor2D() {
             st.updateGuide(d.id, { x: p.x, y: p.y })
             break
           }
+          case 'paint-move': {
+            const p = snapPoint(world, 1)
+            st.updatePaint(d.id, { x: p.x, y: p.y })
+            break
+          }
+          case 'building-move': {
+            const p = snapPoint(sub(world, d.offset), 1)
+            st.updateBuilding(d.id, { x: p.x, y: p.y })
+            break
+          }
         }
       }
       const onUp = () => {
@@ -396,7 +450,7 @@ export default function Editor2D() {
     [worldFromClient, snapForDraw, moveCluster]
   )
 
-  // ---------- wall drawing ----------
+  // ---------- wall / fence drawing ----------
   const commitSegment = useCallback(
     (p: Pt) => {
       const d = draftRef.current
@@ -411,7 +465,18 @@ export default function Editor2D() {
       const closing = d.pts.length >= 2 && dist(p, start) < 12 / viewRef.current.ppi
       const end = closing ? start : p
       st.checkpoint()
-      st.addWall({ a: last, b: end, thickness: WALL_THICKNESS, bulge: 0, height: fl().height })
+      if (st.tool.type === 'fence') {
+        st.addWall({
+          a: last,
+          b: end,
+          thickness: 3,
+          bulge: 0,
+          height: FENCE_HEIGHTS[st.tool.fence],
+          fence: st.tool.fence,
+        })
+      } else {
+        st.addWall({ a: last, b: end, thickness: WALL_THICKNESS, bulge: 0, height: fl().height })
+      }
       setDrawValue('')
       if (closing) setDraft(null)
       else setDraft({ pts: [...d.pts, end], cur: end })
@@ -434,7 +499,7 @@ export default function Editor2D() {
       const world = worldFromClient(e.clientX, e.clientY)
       const st = useStore.getState()
 
-      if (tool.type === 'wall') {
+      if (tool.type === 'wall' || tool.type === 'fence') {
         e.preventDefault()
         const d = draftRef.current
         if (!d) {
@@ -447,6 +512,12 @@ export default function Editor2D() {
           commitSegment(p)
         }
         setTimeout(() => drawInputRef.current?.focus(), 0)
+        return
+      }
+
+      if (tool.type === 'paint') {
+        const p = snapPoint(world, 1)
+        st.addPaint(p.x, p.y, tool.material)
         return
       }
 
@@ -513,13 +584,14 @@ export default function Editor2D() {
       const world = worldFromClient(e.clientX, e.clientY)
       setHoverWorld(world)
 
-      if (tool.type === 'wall' && draftRef.current) {
+      const drawing = tool.type === 'wall' || tool.type === 'fence'
+      if (drawing && draftRef.current) {
         const d = draftRef.current
         const last = d.pts[d.pts.length - 1]
         const { p, mark } = snapForDraw(world, last, e.altKey)
         setSnapMark(mark)
         setDraftRaw({ ...d, cur: p })
-      } else if (tool.type === 'wall' || tool.type === 'measure') {
+      } else if (drawing || tool.type === 'measure') {
         const { mark } = snapForDraw(world, null, e.altKey)
         setSnapMark(mark)
       }
@@ -619,7 +691,12 @@ export default function Editor2D() {
           st.setTool({ type: 'select' })
           break
         case 'w':
-          st.setTool({ type: 'wall' })
+          st.setTool(
+            st.mode.scope === 'plot' ? { type: 'fence', fence: 'privacy' } : { type: 'wall' }
+          )
+          break
+        case 'p':
+          if (st.mode.scope === 'building') st.setTool({ type: 'paint', material: 'tile' })
           break
         case 'd':
           st.setTool({ type: 'opening', opening: 'door' })
@@ -829,6 +906,24 @@ export default function Editor2D() {
         )}
         <rect x={minX} y={minY} width={pw / view.ppi} height={ph / view.ppi} fill="url(#gridBig)" />
 
+        {/* plot boundary (property line) */}
+        {isPlot && (
+          <>
+            <rect x={0} y={0} width={plotW} height={plotD} fill="#f0f4ec" />
+            <rect
+              x={0}
+              y={0}
+              width={plotW}
+              height={plotD}
+              fill="none"
+              stroke={PLOT_LINE}
+              strokeWidth={2}
+              strokeDasharray="14 7 3 7"
+              vectorEffect="non-scaling-stroke"
+            />
+          </>
+        )}
+
         {/* underlay: the floor below, for alignment */}
         {below && (
           <g opacity={0.28} pointerEvents="none">
@@ -872,6 +967,70 @@ export default function Editor2D() {
             <Glyph kind={f.kind} w={f.w} d={f.d} />
           </g>
         ))}
+
+        {/* buildings on the plot */}
+        {isPlot &&
+          buildings.map((b) => {
+            const pts: Pt[] = []
+            for (const w of b.floors[0].walls) pts.push(w.a, w.b)
+            const bb = planBounds(pts) ?? { min: { x: -60, y: -60 }, max: { x: 60, y: 60 } }
+            const sel = selection?.kind === 'building' && selection.id === b.id
+            return (
+              <g key={b.id} transform={`translate(${b.x} ${b.y}) rotate(${b.rot})`}>
+                <rect
+                  x={bb.min.x}
+                  y={bb.min.y}
+                  width={bb.max.x - bb.min.x}
+                  height={bb.max.y - bb.min.y}
+                  fill="#ffffff"
+                  fillOpacity={0.85}
+                  stroke="none"
+                />
+                {b.floors[0].walls.map((w) => (
+                  <WallShape key={w.id} w={w} selected={false} />
+                ))}
+                <text
+                  x={(bb.min.x + bb.max.x) / 2}
+                  y={(bb.min.y + bb.max.y) / 2}
+                  fontSize={Math.max(14, 16 / view.ppi)}
+                  fontFamily="Inter, system-ui, sans-serif"
+                  fontWeight={700}
+                  fill={sel ? ACCENT : '#3f3f46'}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  style={{ userSelect: 'none', pointerEvents: 'none' }}
+                >
+                  {b.name}
+                </text>
+                <rect
+                  x={bb.min.x - 6}
+                  y={bb.min.y - 6}
+                  width={bb.max.x - bb.min.x + 12}
+                  height={bb.max.y - bb.min.y + 12}
+                  fill="transparent"
+                  stroke={sel ? ACCENT : 'transparent'}
+                  strokeWidth={1.6}
+                  strokeDasharray="6 4"
+                  vectorEffect="non-scaling-stroke"
+                  style={{ cursor: tool.type === 'select' ? 'move' : undefined }}
+                  onPointerDown={(e) => {
+                    if (tool.type !== 'select' || spaceDown) return
+                    const world = worldFromClient(e.clientX, e.clientY)
+                    useStore.getState().select({ kind: 'building', id: b.id })
+                    beginDrag(
+                      { mode: 'building-move', id: b.id, offset: sub(world, { x: b.x, y: b.y }) },
+                      e
+                    )
+                  }}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation()
+                    const idx = useStore.getState().project.buildings.findIndex((x) => x.id === b.id)
+                    if (idx >= 0) useStore.getState().enterBuilding(idx)
+                  }}
+                />
+              </g>
+            )
+          })}
 
         {/* walls */}
         {floor.walls.map((w) => (
@@ -1037,6 +1196,29 @@ export default function Editor2D() {
           )
         })}
 
+        {/* floor material paint seeds */}
+        {floor.paints.map((p) => {
+          const sel = selection?.kind === 'paint' && selection.id === p.id
+          return (
+            <g key={p.id} transform={`translate(${p.x} ${p.y})`}>
+              <circle
+                r={handleSize * 0.8}
+                fill={PAINT_COLORS[p.material]}
+                stroke={sel ? ACCENT : '#ffffff'}
+                strokeWidth={sel ? 2 : 1.4}
+                vectorEffect="non-scaling-stroke"
+                style={{ cursor: tool.type === 'select' ? 'move' : undefined }}
+                onPointerDown={(e) => {
+                  if (tool.type !== 'select' || spaceDown) return
+                  useStore.getState().select({ kind: 'paint', id: p.id })
+                  beginDrag({ mode: 'paint-move', id: p.id }, e)
+                }}
+              />
+              <circle r={handleSize * 0.28} fill="#ffffff" pointerEvents="none" />
+            </g>
+          )
+        })}
+
         {/* selected wall handles */}
         {selectedWall && (
           <g>
@@ -1180,7 +1362,7 @@ export default function Editor2D() {
               y2={draft.cur.y}
               stroke={ACCENT}
               strokeOpacity={0.85}
-              strokeWidth={WALL_THICKNESS}
+              strokeWidth={tool.type === 'fence' ? 2.5 : WALL_THICKNESS}
               strokeLinecap="square"
             />
             {(() => {
@@ -1371,21 +1553,27 @@ export default function Editor2D() {
 
       {/* helper hint */}
       <div className="canvas-hint">
-        {tool.type === 'wall'
+        {tool.type === 'wall' || tool.type === 'fence'
           ? draft
             ? 'Click to place · type a length + Enter for exact · Enter/Esc to finish'
-            : 'Click to start a wall · snaps to marks, endpoints & 45°'
+            : tool.type === 'fence'
+              ? 'Click to run fence lines · snaps to marks, posts & 45°'
+              : 'Click to start a wall · snaps to marks, endpoints & 45°'
           : tool.type === 'opening'
             ? 'Hover a wall, click to place. Drag later to reposition.'
             : tool.type === 'place'
               ? 'Click to place · hold Shift to place multiple'
               : tool.type === 'label'
-                ? 'Click to add a room label'
+                ? 'Click to add a label'
                 : tool.type === 'measure'
                   ? 'Click to drop a reference mark · marks show distances to nearby walls and snap like endpoints'
-                  : activeFloor > 0
-                    ? `Editing ${floor.name} — the floor below is shown in gray`
-                    : 'Scroll to pan · ⌘/Ctrl+scroll to zoom · Space+drag to pan'}
+                  : tool.type === 'paint'
+                    ? 'Click inside a room to set its floor material'
+                    : isPlot
+                      ? 'Drag buildings to move them · double-click a building to edit its floors'
+                      : activeFloor > 0
+                        ? `Editing ${floor.name} — the floor below is shown in gray`
+                        : 'Scroll to pan · ⌘/Ctrl+scroll to zoom · Space+drag to pan'}
       </div>
     </div>
   )

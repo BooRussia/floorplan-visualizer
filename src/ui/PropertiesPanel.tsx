@@ -2,7 +2,30 @@ import { useEffect, useState } from 'react'
 import { stairSpecs, useActiveFloor, useStore } from '../model/store'
 import { catalogItem } from '../model/catalog'
 import { dist, fmtLenShort, norm, parseLen, scale, sub, add } from '../model/geometry'
-import { MAX_FLOORS, STORY_GAP, type OpeningType } from '../model/types'
+import {
+  MAX_BUILDINGS,
+  MAX_FLOORS,
+  SQIN_PER_ACRE,
+  STORY_GAP,
+  type FenceType,
+  type FloorMaterial,
+  type OpeningType,
+} from '../model/types'
+
+const FENCE_LABELS: Record<FenceType, string> = {
+  privacy: 'Privacy fence',
+  picket: 'Picket fence',
+  chain: 'Chain-link fence',
+  rail: 'Split-rail fence',
+}
+
+const MATERIAL_LABELS: Record<FloorMaterial, string> = {
+  wood: 'Wood',
+  tile: 'Tile',
+  carpet: 'Carpet',
+  concrete: 'Concrete',
+  stone: 'Stone',
+}
 
 /** Text input that accepts measurements like 12'6", commits on Enter/blur. */
 function LenInput({
@@ -57,9 +80,154 @@ const GARAGE_WIDTHS = [
 export default function PropertiesPanel() {
   const selection = useStore((s) => s.selection)
   const floor = useActiveFloor()
+  const mode = useStore((s) => s.mode)
+  const project = useStore((s) => s.project)
   const activeFloor = useStore((s) => s.activeFloor)
-  const floorCount = useStore((s) => s.plan.floors.length)
   const st = useStore.getState()
+  const isPlot = mode.scope === 'plot'
+  const floorCount = isPlot ? 1 : project.buildings[(mode as any).index].floors.length
+
+  if (!selection && isPlot) {
+    const acres = (project.plotW * project.plotD) / SQIN_PER_ACRE
+    return (
+      <aside className="props">
+        <div className="props-header">Plot</div>
+        <div className="props-body">
+          <LenInput
+            label="Plot width"
+            value={project.plotW}
+            onCommit={(v) => st.setPlotSize(v, project.plotD)}
+          />
+          <LenInput
+            label="Plot depth"
+            value={project.plotD}
+            onCommit={(v) => st.setPlotSize(project.plotW, v)}
+          />
+          <div className="props-stat">
+            <span>Area</span>
+            <b>{acres >= 0.2 ? `${acres.toFixed(2)} acres` : `${Math.round((project.plotW * project.plotD) / 144)} sq ft`}</b>
+          </div>
+          <div className="props-stat">
+            <span>Buildings</span>
+            <b>{project.buildings.length}</b>
+          </div>
+          <div className="props-stat">
+            <span>Fence lines</span>
+            <b>{project.site.walls.length}</b>
+          </div>
+          <div className="props-stat">
+            <span>Landscape items</span>
+            <b>{project.site.furniture.length}</b>
+          </div>
+          {project.buildings.length < MAX_BUILDINGS && (
+            <button className="mini-btn" onClick={() => st.addBuilding()}>
+              ＋ Add building
+            </button>
+          )}
+          <p className="props-tip">
+            Tip: a 10-acre square plot is about 660' × 660'. Drag buildings to place them;
+            double-click one to design its floors. Draw fences with <kbd>W</kbd>, drop
+            driveways and landscaping from the site library.
+          </p>
+        </div>
+      </aside>
+    )
+  }
+
+  if (selection?.kind === 'building') {
+    const b = project.buildings.find((x) => x.id === selection.id)
+    if (!b) return null
+    const idx = project.buildings.indexOf(b)
+    return (
+      <aside className="props">
+        <div className="props-header">Building</div>
+        <div className="props-body">
+          <label className="prop-field">
+            <span>Name</span>
+            <input
+              value={b.name}
+              onChange={(e) => st.updateBuilding(b.id, { name: e.target.value })}
+              onKeyDown={(e) => e.stopPropagation()}
+            />
+          </label>
+          <label className="prop-field">
+            <span>Rotation</span>
+            <div className="prop-row">
+              <input
+                type="number"
+                value={Math.round(b.rot)}
+                onChange={(e) => st.updateBuilding(b.id, { rot: Number(e.target.value) % 360 })}
+                onKeyDown={(e) => e.stopPropagation()}
+                style={{ width: 64 }}
+              />
+              <button
+                className="mini-btn"
+                onClick={() => {
+                  st.checkpoint()
+                  st.updateBuilding(b.id, { rot: (b.rot + 90) % 360 })
+                }}
+              >
+                ⟳ 90°
+              </button>
+            </div>
+          </label>
+          <div className="props-stat">
+            <span>Floors</span>
+            <b>{b.floors.length}</b>
+          </div>
+          <button className="mini-btn" onClick={() => st.enterBuilding(idx)}>
+            Edit floor plans →
+          </button>
+          {project.buildings.length > 1 && (
+            <button
+              className="danger-btn"
+              onClick={() => {
+                if (confirm(`Delete ${b.name} and all its floors?`)) st.deleteBuilding(b.id)
+              }}
+            >
+              Delete {b.name}
+            </button>
+          )}
+          <p className="props-tip">Drag the building on the plot to move it. Double-click it to edit floors.</p>
+        </div>
+      </aside>
+    )
+  }
+
+  if (selection?.kind === 'paint') {
+    const p = floor.paints.find((x) => x.id === selection.id)
+    if (!p) return null
+    return (
+      <aside className="props">
+        <div className="props-header">Floor material</div>
+        <div className="props-body">
+          <label className="prop-field">
+            <span>Material</span>
+            <select
+              value={p.material}
+              onChange={(e) => {
+                st.checkpoint()
+                st.updatePaint(p.id, { material: e.target.value as FloorMaterial })
+              }}
+            >
+              {Object.entries(MATERIAL_LABELS).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="props-tip">
+            The room containing this marker gets a {MATERIAL_LABELS[p.material].toLowerCase()} floor
+            in 3D. Drag it into a different room to move the material.
+          </p>
+          <button className="danger-btn" onClick={() => st.deleteSelected()}>
+            Delete marker
+          </button>
+        </div>
+      </aside>
+    )
+  }
 
   if (!selection) {
     const wallFt = floor.walls.reduce((acc, w) => acc + dist(w.a, w.b), 0) / 12
@@ -134,6 +302,68 @@ export default function PropertiesPanel() {
   if (selection.kind === 'wall') {
     const w = floor.walls.find((x) => x.id === selection.id)
     if (!w) return null
+    if (w.fence) {
+      return (
+        <aside className="props">
+          <div className="props-header">{FENCE_LABELS[w.fence]}</div>
+          <div className="props-body">
+            <label className="prop-field">
+              <span>Type</span>
+              <select
+                value={w.fence}
+                onChange={(e) => {
+                  st.checkpoint()
+                  st.updateWall(w.id, { fence: e.target.value as FenceType })
+                }}
+              >
+                {Object.entries(FENCE_LABELS).map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <LenInput
+              label="Length"
+              value={dist(w.a, w.b)}
+              onCommit={(v) => {
+                st.checkpoint()
+                const dir = norm(sub(w.b, w.a))
+                st.updateWall(w.id, { b: add(w.a, scale(dir, v)) })
+              }}
+            />
+            <LenInput
+              label="Height"
+              value={w.height}
+              onCommit={(v) => {
+                st.checkpoint()
+                st.updateWall(w.id, { height: Math.min(120, Math.max(24, v)) })
+              }}
+            />
+            <div className="prop-field">
+              <span>Curve</span>
+              <div className="prop-row">
+                <b>{w.bulge ? `${Math.abs(Math.round(w.bulge))}" bow` : 'straight'}</b>
+                {w.bulge !== 0 && (
+                  <button
+                    className="mini-btn"
+                    onClick={() => {
+                      st.checkpoint()
+                      st.updateWall(w.id, { bulge: 0 })
+                    }}
+                  >
+                    Straighten
+                  </button>
+                )}
+              </div>
+            </div>
+            <button className="danger-btn" onClick={() => st.deleteSelected()}>
+              Delete fence line
+            </button>
+          </div>
+        </aside>
+      )
+    }
     return (
       <aside className="props">
         <div className="props-header">Wall</div>

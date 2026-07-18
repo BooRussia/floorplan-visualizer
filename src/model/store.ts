@@ -1,25 +1,32 @@
 import { create } from 'zustand'
 import {
+  emptyBuilding,
   emptyFloor,
-  emptyPlan,
-  migratePlan,
+  emptyProject,
+  migrateProject,
+  MAX_BUILDINGS,
   MAX_FLOORS,
   STORY_GAP,
   uid,
+  type Building,
+  type EditMode,
   type Floor,
+  type FloorMaterial,
+  type FloorPaint,
   type Furniture,
   type Guide,
   type Label,
   type Opening,
-  type Plan,
+  type Project,
   type Selection,
   type Tool,
   type Wall,
 } from './types'
 import { catalogItem } from './catalog'
-import { SAMPLE_PLAN } from './samplePlan'
+import { SAMPLE_PROJECT } from './samplePlan'
 
-const STORAGE_KEY = 'floorplan-visualizer-plan-v1'
+const STORAGE_KEY = 'floorplan-visualizer-project-v3'
+const LEGACY_KEY = 'floorplan-visualizer-plan-v1'
 
 /** Stair sizing from total rise: risers ≤ 7¾", treads 10½". */
 export function stairSpecs(totalRise: number) {
@@ -30,19 +37,27 @@ export function stairSpecs(totalRise: number) {
 }
 
 interface StoreState {
-  plan: Plan
+  project: Project
+  mode: EditMode
   activeFloor: number
   selection: Selection
   tool: Tool
   view: '2d' | '3d'
   showDims: boolean
-  past: Plan[]
-  future: Plan[]
+  past: Project[]
+  future: Project[]
 
   setTool: (t: Tool) => void
   setView: (v: '2d' | '3d') => void
   setShowDims: (b: boolean) => void
   select: (s: Selection) => void
+
+  enterBuilding: (index: number) => void
+  exitToPlot: () => void
+  setPlotSize: (w: number, d: number) => void
+  addBuilding: (x?: number, y?: number) => void
+  updateBuilding: (id: string, patch: Partial<Pick<Building, 'name' | 'x' | 'y' | 'rot'>>) => void
+  deleteBuilding: (id: string) => void
 
   setActiveFloor: (i: number) => void
   addFloor: () => void
@@ -64,39 +79,62 @@ interface StoreState {
   addGuide: (x: number, y: number) => string
   updateGuide: (id: string, patch: Partial<Guide>) => void
   clearGuides: () => void
+  addPaint: (x: number, y: number, material: FloorMaterial) => string
+  updatePaint: (id: string, patch: Partial<FloorPaint>) => void
   deleteSelected: () => void
   duplicateSelected: () => void
-  clearPlan: () => void
-  loadPlan: (p: unknown) => boolean
+  clearProject: () => void
+  loadProject: (p: unknown) => boolean
 }
 
 const clone = <T,>(p: T): T => JSON.parse(JSON.stringify(p))
 
-function loadInitial(): Plan {
+function loadInitial(): Project {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_KEY)
     if (raw) {
-      const p = migratePlan(JSON.parse(raw))
+      const p = migrateProject(JSON.parse(raw))
       if (p) return p
     }
   } catch {
     /* corrupted save — start fresh */
   }
-  // first launch: open with the sample apartment so there's something to explore
-  return clone(SAMPLE_PLAN)
+  return clone(SAMPLE_PROJECT)
+}
+
+/** The floor currently being edited (site layer in plot mode). */
+export function floorFor(state: { project: Project; mode: EditMode; activeFloor: number }): Floor {
+  if (state.mode.scope === 'plot') return state.project.site
+  const b = state.project.buildings[state.mode.index]
+  return b.floors[Math.min(state.activeFloor, b.floors.length - 1)]
 }
 
 export const useStore = create<StoreState>((set, get) => {
-  /** Apply fn to the active floor, immutably. */
+  /** Apply fn to the active floor (site or building floor), immutably. */
   const onFloor = (fn: (f: Floor) => Floor) =>
-    set((s) => ({
-      plan: {
-        floors: s.plan.floors.map((f, i) => (i === s.activeFloor ? fn(f) : f)),
-      },
-    }))
+    set((s) => {
+      if (s.mode.scope === 'plot') {
+        return { project: { ...s.project, site: fn(s.project.site) } }
+      }
+      const bi = s.mode.index
+      return {
+        project: {
+          ...s.project,
+          buildings: s.project.buildings.map((b, i) =>
+            i === bi
+              ? {
+                  ...b,
+                  floors: b.floors.map((f, j) => (j === s.activeFloor ? fn(f) : f)),
+                }
+              : b
+          ),
+        },
+      }
+    })
 
   return {
-    plan: loadInitial(),
+    project: loadInitial(),
+    mode: { scope: 'plot' },
     activeFloor: 0,
     selection: null,
     tool: { type: 'select' },
@@ -110,66 +148,153 @@ export const useStore = create<StoreState>((set, get) => {
     setShowDims: (showDims) => set({ showDims }),
     select: (selection) => set({ selection }),
 
-    setActiveFloor: (i) =>
+    enterBuilding: (index) =>
       set((s) => ({
-        activeFloor: Math.max(0, Math.min(i, s.plan.floors.length - 1)),
+        mode: { scope: 'building', index: Math.max(0, Math.min(index, s.project.buildings.length - 1)) },
+        activeFloor: 0,
         selection: null,
+        tool: { type: 'select' },
       })),
-    addFloor: () => {
-      const { plan, checkpoint } = get()
-      if (plan.floors.length >= MAX_FLOORS) return
-      checkpoint()
-      const f = emptyFloor(plan.floors.length + 1)
+    exitToPlot: () =>
+      set({ mode: { scope: 'plot' }, activeFloor: 0, selection: null, tool: { type: 'select' } }),
+    setPlotSize: (w, d) => {
+      get().checkpoint()
       set((s) => ({
-        plan: { floors: [...s.plan.floors, f] },
-        activeFloor: s.plan.floors.length,
+        project: {
+          ...s.project,
+          plotW: Math.max(240, Math.min(w, 5280 * 12)),
+          plotD: Math.max(240, Math.min(d, 5280 * 12)),
+        },
+      }))
+    },
+    addBuilding: (x, y) => {
+      const { project, checkpoint } = get()
+      if (project.buildings.length >= MAX_BUILDINGS) return
+      checkpoint()
+      const b = emptyBuilding(
+        project.buildings.length + 1,
+        x ?? project.plotW / 2,
+        y ?? project.plotD / 2
+      )
+      set((s) => ({
+        project: { ...s.project, buildings: [...s.project.buildings, b] },
+        selection: { kind: 'building', id: b.id },
+      }))
+    },
+    updateBuilding: (id, patch) =>
+      set((s) => ({
+        project: {
+          ...s.project,
+          buildings: s.project.buildings.map((b) => (b.id === id ? { ...b, ...patch } : b)),
+        },
+      })),
+    deleteBuilding: (id) => {
+      const { project, checkpoint } = get()
+      if (project.buildings.length <= 1) return
+      checkpoint()
+      set((s) => ({
+        project: { ...s.project, buildings: s.project.buildings.filter((b) => b.id !== id) },
+        mode: { scope: 'plot' },
         selection: null,
       }))
     },
+
+    setActiveFloor: (i) =>
+      set((s) => {
+        if (s.mode.scope !== 'building') return {}
+        const b = s.project.buildings[s.mode.index]
+        return { activeFloor: Math.max(0, Math.min(i, b.floors.length - 1)), selection: null }
+      }),
+    addFloor: () => {
+      const s = get()
+      if (s.mode.scope !== 'building') return
+      const b = s.project.buildings[s.mode.index]
+      if (b.floors.length >= MAX_FLOORS) return
+      s.checkpoint()
+      const f = emptyFloor(b.floors.length + 1)
+      set((st) => {
+        const bi = (st.mode as { scope: 'building'; index: number }).index
+        return {
+          project: {
+            ...st.project,
+            buildings: st.project.buildings.map((bb, i) =>
+              i === bi ? { ...bb, floors: [...bb.floors, f] } : bb
+            ),
+          },
+          activeFloor: b.floors.length,
+          selection: null,
+        }
+      })
+    },
     deleteFloor: (i) => {
-      const { plan, checkpoint } = get()
-      if (plan.floors.length <= 1 || i === 0) return // ground floor stays
-      checkpoint()
-      set((s) => ({
-        plan: { floors: s.plan.floors.filter((_, j) => j !== i) },
-        activeFloor: Math.min(s.activeFloor, s.plan.floors.length - 2),
+      const s = get()
+      if (s.mode.scope !== 'building' || i === 0) return
+      const bi = s.mode.index
+      const b = s.project.buildings[bi]
+      if (b.floors.length <= 1) return
+      s.checkpoint()
+      set((st) => ({
+        project: {
+          ...st.project,
+          buildings: st.project.buildings.map((bb, j) =>
+            j === bi ? { ...bb, floors: bb.floors.filter((_, k) => k !== i) } : bb
+          ),
+        },
+        activeFloor: Math.min(s.activeFloor, b.floors.length - 2),
         selection: null,
       }))
     },
     updateFloor: (i, patch) =>
-      set((s) => ({
-        plan: { floors: s.plan.floors.map((f, j) => (j === i ? { ...f, ...patch } : f)) },
-      })),
+      set((s) => {
+        if (s.mode.scope !== 'building') return {}
+        const bi = s.mode.index
+        return {
+          project: {
+            ...s.project,
+            buildings: s.project.buildings.map((b, j) =>
+              j === bi
+                ? { ...b, floors: b.floors.map((f, k) => (k === i ? { ...f, ...patch } : f)) }
+                : b
+            ),
+          },
+        }
+      }),
 
     checkpoint: () => {
-      const { plan, past } = get()
-      const next = [...past, clone(plan)]
+      const { project, past } = get()
+      const next = [...past, clone(project)]
       if (next.length > 100) next.shift()
       set({ past: next, future: [] })
     },
     undo: () => {
-      const { past, plan, future, activeFloor } = get()
+      const { past, project, future } = get()
       if (!past.length) return
       const prev = past[past.length - 1]
-      set({
-        plan: prev,
+      set((s) => ({
+        project: prev,
         past: past.slice(0, -1),
-        future: [clone(plan), ...future],
+        future: [clone(project), ...future],
         selection: null,
-        activeFloor: Math.min(activeFloor, prev.floors.length - 1),
-      })
+        mode:
+          s.mode.scope === 'building' && s.mode.index >= prev.buildings.length
+            ? { scope: 'plot' }
+            : s.mode,
+      }))
     },
     redo: () => {
-      const { past, plan, future, activeFloor } = get()
+      const { past, project, future } = get()
       if (!future.length) return
       const next = future[0]
-      set({
-        plan: next,
+      set((s) => ({
+        project: next,
         future: future.slice(1),
-        past: [...past, clone(plan)],
+        past: [...past, clone(project)],
         selection: null,
-        activeFloor: Math.min(activeFloor, next.floors.length - 1),
-      })
+        mode:
+          s.mode.scope === 'building' && s.mode.index >= next.buildings.length
+            ? { scope: 'plot' }
+            : s.mode,
+      }))
     },
 
     addWall: (w) => {
@@ -195,10 +320,10 @@ export const useStore = create<StoreState>((set, get) => {
     addFurniture: (kind, x, y, rot = 0) => {
       const item = catalogItem(kind)
       const id = uid('furn')
-      const floor = get().plan.floors[get().activeFloor]
+      const s = get()
       let { w, d, h } = item
-      if (kind === 'staircase') {
-        // size the run for this story's rise
+      if (kind === 'staircase' && s.mode.scope === 'building') {
+        const floor = floorFor(s)
         const specs = stairSpecs(floor.height + STORY_GAP)
         d = specs.run
         h = floor.height + STORY_GAP
@@ -239,10 +364,25 @@ export const useStore = create<StoreState>((set, get) => {
       onFloor((f) => ({ ...f, guides: [] }))
       set({ selection: null })
     },
+    addPaint: (x, y, material) => {
+      const id = uid('paint')
+      get().checkpoint()
+      onFloor((f) => ({ ...f, paints: [...f.paints, { id, x, y, material }] }))
+      return id
+    },
+    updatePaint: (id, patch) =>
+      onFloor((f) => ({
+        ...f,
+        paints: f.paints.map((p) => (p.id === id ? { ...p, ...patch } : p)),
+      })),
 
     deleteSelected: () => {
       const { selection, checkpoint } = get()
       if (!selection) return
+      if (selection.kind === 'building') {
+        get().deleteBuilding(selection.id)
+        return
+      }
       checkpoint()
       onFloor((f) => {
         const p = clone(f)
@@ -257,6 +397,8 @@ export const useStore = create<StoreState>((set, get) => {
           p.labels = p.labels.filter((l) => l.id !== selection.id)
         } else if (selection.kind === 'guide') {
           p.guides = p.guides.filter((g) => g.id !== selection.id)
+        } else if (selection.kind === 'paint') {
+          p.paints = p.paints.filter((g) => g.id !== selection.id)
         }
         return p
       })
@@ -264,33 +406,34 @@ export const useStore = create<StoreState>((set, get) => {
     },
 
     duplicateSelected: () => {
-      const { selection, plan, activeFloor, checkpoint } = get()
-      if (!selection || selection.kind !== 'furniture') return
-      const f = plan.floors[activeFloor].furniture.find((x) => x.id === selection.id)
+      const s = get()
+      if (!s.selection || s.selection.kind !== 'furniture') return
+      const selId = s.selection.id
+      const f = floorFor(s).furniture.find((x) => x.id === selId)
       if (!f) return
-      checkpoint()
+      s.checkpoint()
       const id = uid('furn')
       const copy = { ...f, id, x: f.x + 12, y: f.y + 12 }
       onFloor((fl) => ({ ...fl, furniture: [...fl.furniture, copy] }))
       set({ selection: { kind: 'furniture', id } })
     },
 
-    clearPlan: () => {
+    clearProject: () => {
       get().checkpoint()
-      set({ plan: emptyPlan(), activeFloor: 0, selection: null })
+      set({ project: emptyProject(), mode: { scope: 'plot' }, activeFloor: 0, selection: null })
     },
-    loadPlan: (raw) => {
-      const p = migratePlan(raw)
+    loadProject: (raw) => {
+      const p = migrateProject(raw)
       if (!p) return false
       get().checkpoint()
-      set({ plan: p, activeFloor: 0, selection: null })
+      set({ project: p, mode: { scope: 'plot' }, activeFloor: 0, selection: null })
       return true
     },
   }
 })
 
-/** Convenience selector for the floor being edited. */
-export const useActiveFloor = () => useStore((s) => s.plan.floors[s.activeFloor])
+/** Convenience selector for the floor being edited (site layer in plot mode). */
+export const useActiveFloor = () => useStore((s) => floorFor(s))
 
 // Debug/scripting access from the browser console (dev only)
 if (import.meta.env.DEV) (globalThis as any).__store = useStore
@@ -301,7 +444,7 @@ useStore.subscribe((state) => {
   clearTimeout(saveTimer)
   saveTimer = setTimeout(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.plan))
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.project))
     } catch {
       /* storage full/unavailable — skip autosave */
     }

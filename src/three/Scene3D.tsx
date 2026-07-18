@@ -2,15 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { useStore } from '../model/store'
-import { buildPlan, disposePlan, type BuiltPlan } from './buildScene'
-import { snapTo } from '../model/geometry'
+import { buildProject, disposePlan, type BuiltProject } from './buildScene'
+import { rotatePt, snapTo } from '../model/geometry'
 
 interface ThreeState {
   renderer: THREE.WebGLRenderer
   scene: THREE.Scene
   camera: THREE.PerspectiveCamera
   controls: OrbitControls
-  built: BuiltPlan | null
+  built: BuiltProject | null
   selectionBox: THREE.BoxHelper | null
   sun: THREE.DirectionalLight
   raf: number
@@ -19,7 +19,9 @@ interface ThreeState {
 export default function Scene3D() {
   const mountRef = useRef<HTMLDivElement>(null)
   const stateRef = useRef<ThreeState | null>(null)
-  const floorCount = useStore((s) => s.plan.floors.length)
+  const floorCount = useStore((s) =>
+    Math.max(1, ...s.project.buildings.map((b) => b.floors.length))
+  )
   const [visFloor, setVisFloor] = useState<'all' | number>('all')
   const visRef = useRef(visFloor)
   visRef.current = visFloor
@@ -28,9 +30,9 @@ export default function Scene3D() {
   const applyVisibility = () => {
     const st = stateRef.current
     if (!st?.built) return
-    st.built.floorGroups.forEach((g, i) => {
-      g.visible = visRef.current === 'all' || visRef.current === i
-    })
+    for (const fg of st.built.floorGroups) {
+      fg.group.visible = visRef.current === 'all' || visRef.current === fg.floor
+    }
   }
   useEffect(applyVisibility, [visFloor])
 
@@ -124,13 +126,13 @@ export default function Scene3D() {
     }
 
     const rebuild = (fit: boolean) => {
-      const plan = useStore.getState().plan
+      const project = useStore.getState().project
       if (st.built) {
         scene.remove(st.built.group)
         disposePlan(st.built.group)
       }
       clearSelectionBox()
-      st.built = buildPlan(plan)
+      st.built = buildProject(project)
       scene.add(st.built.group)
       applyVisibility()
       const { center, radius } = st.built
@@ -152,11 +154,11 @@ export default function Scene3D() {
     rebuild(true)
 
     let timer: ReturnType<typeof setTimeout> | undefined
-    let lastPlan = useStore.getState().plan
+    let lastProject = useStore.getState().project
     let lastSel = useStore.getState().selection
     const unsub = useStore.subscribe((s) => {
-      if (s.plan !== lastPlan) {
-        lastPlan = s.plan
+      if (s.project !== lastProject) {
+        lastProject = s.project
         clearTimeout(timer)
         timer = setTimeout(() => rebuild(false), 140)
       }
@@ -186,7 +188,11 @@ export default function Scene3D() {
       ray.setFromCamera(ndc, camera)
       const groups: THREE.Object3D[] = []
       for (const info of st.built.furniture.values()) {
-        if (st.built.floorGroups[info.floorIndex].visible) groups.push(info.group)
+        const vis =
+          info.place.scope === 'site' ||
+          visRef.current === 'all' ||
+          visRef.current === info.place.floor
+        if (vis) groups.push(info.group)
       }
       const hits = ray.intersectObjects(groups, true)
       for (const hit of hits) {
@@ -206,24 +212,37 @@ export default function Scene3D() {
       return ray.ray.intersectPlane(dragPlane, out) ? out : null
     }
 
+    /** world plan point -> furniture-local coords (building rotation aware) */
+    const toLocalPos = (info: { transform?: { x: number; y: number; rot: number } }, wx: number, wz: number) => {
+      if (!info.transform) return { x: wx, y: wz }
+      const p = rotatePt({ x: wx - info.transform.x, y: wz - info.transform.y }, -info.transform.rot)
+      return { x: p.x, y: p.y }
+    }
+
     const onPointerDown = (ev: PointerEvent) => {
       if (ev.button !== 0) return
       const id = pick(ev)
       const store = useStore.getState()
       if (id && st.built) {
         const info = st.built.furniture.get(id)!
-        // edits (panel + drag) must land on this furniture's floor
-        store.setActiveFloor(info.floorIndex)
+        // route edits (panel + drag writes) to this furniture's layer
+        if (info.place.scope === 'building') {
+          store.enterBuilding(info.place.index)
+          store.setActiveFloor(info.place.floor)
+        } else {
+          store.exitToPlot()
+        }
         store.select({ kind: 'furniture', id })
         dragPlane.constant = -(info.elevation + 0.12)
         const p = planePoint(ev)
         if (p) {
+          const local = toLocalPos(info, p.x, p.z)
           dragging = {
             id,
             grabOffset: new THREE.Vector3(
-              info.group.position.x - p.x,
+              info.group.position.x - local.x,
               0,
-              info.group.position.z - p.z
+              info.group.position.z - local.y
             ),
             moved: false,
           }
@@ -243,10 +262,11 @@ export default function Scene3D() {
         dragging.moved = true
         useStore.getState().checkpoint()
       }
+      const local = toLocalPos(info, p.x, p.z)
       info.group.position.set(
-        p.x + dragging.grabOffset.x,
+        local.x + dragging.grabOffset.x,
         info.group.position.y,
-        p.z + dragging.grabOffset.z
+        local.y + dragging.grabOffset.z
       )
       st.selectionBox?.update()
     }
@@ -320,7 +340,7 @@ export default function Scene3D() {
         </div>
       )}
       <div className="canvas-hint scene3d-hint">
-        Drag to orbit · scroll to zoom · click furniture to select, drag to move · edits in 2D
+        Drag to orbit · scroll to zoom · click items to select, drag to move · edits in 2D
         regenerate this view automatically
       </div>
       <div className="zoom-controls">

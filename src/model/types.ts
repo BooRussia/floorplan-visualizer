@@ -5,6 +5,8 @@ export interface Pt {
   y: number
 }
 
+export type FenceType = 'privacy' | 'picket' | 'chain' | 'rail'
+
 export interface Wall {
   id: string
   a: Pt
@@ -13,6 +15,8 @@ export interface Wall {
   /** Perpendicular offset of the curve midpoint from the chord. 0 = straight wall. */
   bulge: number
   height: number // inches, used by the 3D view
+  /** When set, this "wall" is a fence line on the site plan. */
+  fence?: FenceType
 }
 
 export type OpeningType =
@@ -66,6 +70,16 @@ export interface Guide {
   y: number
 }
 
+export type FloorMaterial = 'wood' | 'tile' | 'carpet' | 'concrete' | 'stone'
+
+/** Paint-bucket seed: the room containing this point gets the material. */
+export interface FloorPaint {
+  id: string
+  x: number
+  y: number
+  material: FloorMaterial
+}
+
 export interface Floor {
   id: string
   name: string
@@ -76,15 +90,36 @@ export interface Floor {
   furniture: Furniture[]
   labels: Label[]
   guides: Guide[]
+  paints: FloorPaint[]
 }
 
-export interface Plan {
+/** A building placed on the plot. Floor geometry is in building-local inches. */
+export interface Building {
+  id: string
+  name: string
+  x: number // plot position of the building's local origin, inches
+  y: number
+  rot: number // degrees clockwise
   floors: Floor[]
 }
 
+export interface Project {
+  /** plot dimensions in inches */
+  plotW: number
+  plotD: number
+  /** landscaping layer: walls double as fence lines, furniture as landscape items/surfaces */
+  site: Floor
+  buildings: Building[]
+}
+
 export const MAX_FLOORS = 3
+export const MAX_BUILDINGS = 8
 /** Structural gap between a story's ceiling and the next story's floor surface. */
 export const STORY_GAP = 10
+export const SQIN_PER_ACRE = 43560 * 144
+
+/** Which layer is being edited. */
+export type EditMode = { scope: 'plot' } | { scope: 'building'; index: number }
 
 export type Selection =
   | { kind: 'wall'; id: string }
@@ -92,16 +127,20 @@ export type Selection =
   | { kind: 'furniture'; id: string }
   | { kind: 'label'; id: string }
   | { kind: 'guide'; id: string }
+  | { kind: 'paint'; id: string }
+  | { kind: 'building'; id: string }
   | null
 
 export type Tool =
   | { type: 'select' }
   | { type: 'pan' }
   | { type: 'wall' }
+  | { type: 'fence'; fence: FenceType }
   | { type: 'opening'; opening: OpeningType }
   | { type: 'place'; kind: string }
   | { type: 'label' }
   | { type: 'measure' }
+  | { type: 'paint'; material: FloorMaterial }
 
 export const emptyFloor = (n: number): Floor => ({
   id: uid('floor'),
@@ -112,41 +151,66 @@ export const emptyFloor = (n: number): Floor => ({
   furniture: [],
   labels: [],
   guides: [],
+  paints: [],
 })
 
-export const emptyPlan = (): Plan => ({ floors: [emptyFloor(1)] })
+export const emptyBuilding = (n: number, x = 0, y = 0): Building => ({
+  id: uid('bldg'),
+  name: `Building ${n}`,
+  x,
+  y,
+  rot: 0,
+  floors: [emptyFloor(1)],
+})
 
-/** Accepts both the current {floors:[...]} shape and the legacy single-floor shape. */
-export function migratePlan(raw: any): Plan | null {
+export const emptyProject = (): Project => ({
+  plotW: 200 * 12,
+  plotD: 150 * 12,
+  site: { ...emptyFloor(1), id: uid('site'), name: 'Site' },
+  buildings: [emptyBuilding(1)],
+})
+
+const migrateFloor = (f: any, i: number): Floor => ({
+  id: f.id ?? uid('floor'),
+  name: f.name ?? `Floor ${i + 1}`,
+  height: typeof f.height === 'number' ? f.height : 96,
+  walls: f.walls ?? [],
+  openings: f.openings ?? [],
+  furniture: f.furniture ?? [],
+  labels: f.labels ?? [],
+  guides: f.guides ?? [],
+  paints: f.paints ?? [],
+})
+
+/** Accepts the current project shape plus both legacy shapes (floors-only, single-floor). */
+export function migrateProject(raw: any): Project | null {
   if (!raw || typeof raw !== 'object') return null
-  if (Array.isArray(raw.floors) && raw.floors.length) {
-    const floors: Floor[] = raw.floors.slice(0, MAX_FLOORS).map((f: any, i: number) => ({
-      id: f.id ?? uid('floor'),
-      name: f.name ?? `Floor ${i + 1}`,
-      height: typeof f.height === 'number' ? f.height : 96,
-      walls: f.walls ?? [],
-      openings: f.openings ?? [],
-      furniture: f.furniture ?? [],
-      labels: f.labels ?? [],
-      guides: f.guides ?? [],
-    }))
-    return { floors }
-  }
-  if (Array.isArray(raw.walls)) {
+  if (Array.isArray(raw.buildings)) {
     return {
-      floors: [
-        {
-          ...emptyFloor(1),
-          walls: raw.walls,
-          openings: raw.openings ?? [],
-          furniture: raw.furniture ?? [],
-          labels: raw.labels ?? [],
-          guides: raw.guides ?? [],
-        },
-      ],
+      plotW: typeof raw.plotW === 'number' ? raw.plotW : 200 * 12,
+      plotD: typeof raw.plotD === 'number' ? raw.plotD : 150 * 12,
+      site: raw.site ? migrateFloor(raw.site, 0) : { ...emptyFloor(1), name: 'Site' },
+      buildings: raw.buildings.slice(0, MAX_BUILDINGS).map((b: any, i: number) => ({
+        id: b.id ?? uid('bldg'),
+        name: b.name ?? `Building ${i + 1}`,
+        x: b.x ?? 0,
+        y: b.y ?? 0,
+        rot: b.rot ?? 0,
+        floors: (b.floors ?? []).slice(0, MAX_FLOORS).map(migrateFloor),
+      })),
     }
   }
-  return null
+  // legacy: multi-floor plan or single-floor plan → one building on a default plot
+  let floors: Floor[] | null = null
+  if (Array.isArray(raw.floors) && raw.floors.length) {
+    floors = raw.floors.slice(0, MAX_FLOORS).map(migrateFloor)
+  } else if (Array.isArray(raw.walls)) {
+    floors = [migrateFloor(raw, 0)]
+  }
+  if (!floors) return null
+  const project = emptyProject()
+  project.buildings = [{ ...emptyBuilding(1, 300, 300), name: 'House', floors }]
+  return project
 }
 
 let counter = 0

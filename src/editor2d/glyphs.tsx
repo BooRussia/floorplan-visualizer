@@ -486,6 +486,136 @@ export function Glyph({ kind, w, d }: { kind: string; w: number; d: number }) {
         </g>
       )
     }
+    case 'tree-oak': {
+      const r = Math.min(hw, hd)
+      return (
+        <g>
+          <circle cx={0} cy={0} r={r} style={{ ...thinNoFill, strokeDasharray: '3 3' }} />
+          <path
+            d={`M ${-r * 0.7} ${r * 0.3} Q ${-r * 0.9} ${-r * 0.5} ${-r * 0.2} ${-r * 0.65} Q ${r * 0.2} ${-r * 0.95} ${r * 0.55} ${-r * 0.4} Q ${r * 0.95} ${-r * 0.1} ${r * 0.55} ${r * 0.45} Q ${r * 0.25} ${r * 0.9} ${-r * 0.25} ${r * 0.7} Q ${-r * 0.85} ${r * 0.75} ${-r * 0.7} ${r * 0.3} Z`}
+            style={thinNoFill}
+          />
+          <circle cx={0} cy={0} r={r * 0.09} style={{ ...thin, fill: stroke }} />
+        </g>
+      )
+    }
+    case 'tree-pine': {
+      const r = Math.min(hw, hd)
+      return (
+        <g>
+          <circle cx={0} cy={0} r={r} style={{ ...thinNoFill, strokeDasharray: '3 3' }} />
+          {Array.from({ length: 8 }, (_, i) => {
+            const a = (i / 8) * Math.PI * 2
+            return (
+              <line
+                key={i}
+                x1={Math.cos(a) * r * 0.15}
+                y1={Math.sin(a) * r * 0.15}
+                x2={Math.cos(a) * r * 0.92}
+                y2={Math.sin(a) * r * 0.92}
+                style={thinNoFill}
+              />
+            )
+          })}
+          <circle cx={0} cy={0} r={r * 0.1} style={{ ...thin, fill: stroke }} />
+        </g>
+      )
+    }
+    case 'shrub': {
+      const r = Math.min(hw, hd)
+      return (
+        <g>
+          <path
+            d={`M ${-r} 0 Q ${-r} ${-r} ${-r * 0.3} ${-r * 0.85} Q 0 ${-r * 1.05} ${r * 0.4} ${-r * 0.8} Q ${r} ${-r * 0.75} ${r * 0.9} ${-r * 0.05} Q ${r} ${r * 0.7} ${r * 0.25} ${r * 0.85} Q ${-r * 0.4} ${r} ${-r * 0.8} ${r * 0.55} Q ${-r} ${r * 0.3} ${-r} 0 Z`}
+            style={thin}
+          />
+        </g>
+      )
+    }
+    case 'flower-bed':
+      return (
+        <g>
+          <Rect w={w} d={d} r={4} style={softFill} />
+          {(() => {
+            const n = Math.max(3, Math.round(w / 18))
+            return Array.from({ length: n }, (_, i) => {
+              const x = -hw + ((i + 0.5) * w) / n
+              return (
+                <g key={i}>
+                  <circle cx={x} cy={-hd / 3} r={3} style={thinNoFill} />
+                  <circle cx={x + 4} cy={hd / 3} r={3} style={thinNoFill} />
+                </g>
+              )
+            })
+          })()}
+        </g>
+      )
+    case 'stepping-stone':
+      return (
+        <g>
+          <ellipse cx={0} cy={0} rx={hw} ry={hd} style={softFill} />
+        </g>
+      )
+    case 'boulder':
+      return (
+        <g>
+          <path
+            d={`M ${-hw} ${hd * 0.2} Q ${-hw * 0.9} ${-hd} ${-hw * 0.1} ${-hd * 0.9} Q ${hw * 0.8} ${-hd * 0.8} ${hw} ${-hd * 0.1} Q ${hw * 0.95} ${hd * 0.8} ${hw * 0.2} ${hd} Q ${-hw * 0.7} ${hd * 0.95} ${-hw} ${hd * 0.2} Z`}
+            style={softFill}
+          />
+        </g>
+      )
+    case 'mailbox':
+      return (
+        <g>
+          <Rect w={w} d={d} r={2} />
+          <line x1={0} y1={-hd} x2={0} y2={hd} style={thinNoFill} />
+        </g>
+      )
+    case 'surface-concrete':
+    case 'surface-asphalt':
+    case 'surface-gravel':
+    case 'surface-pavers':
+    case 'surface-mulch': {
+      const fills: Record<string, string> = {
+        'surface-concrete': '#e4e4e2',
+        'surface-asphalt': '#c8c9cc',
+        'surface-gravel': '#e0ddd6',
+        'surface-pavers': '#e6ded2',
+        'surface-mulch': '#dfd0c0',
+      }
+      const surfStyle = {
+        stroke: '#a1a1aa',
+        strokeWidth: 1,
+        vectorEffect: 'non-scaling-stroke' as const,
+        fill: fills[kind],
+        fillOpacity: 0.75,
+      }
+      return (
+        <g>
+          <rect x={-hw} y={-hd} width={w} height={d} style={surfStyle} />
+          {kind === 'surface-pavers' && (
+            <>
+              {Array.from({ length: Math.max(1, Math.floor(w / 24)) - 0 }, (_, i) => (
+                <line key={`v${i}`} x1={-hw + (i + 1) * 24} y1={-hd} x2={-hw + (i + 1) * 24} y2={hd} style={{ ...thinNoFill, stroke: '#b5aa98' }} />
+              )).slice(0, Math.floor(w / 24))}
+              {Array.from({ length: Math.floor(d / 24) }, (_, i) => (
+                <line key={`h${i}`} x1={-hw} y1={-hd + (i + 1) * 24} x2={hw} y2={-hd + (i + 1) * 24} style={{ ...thinNoFill, stroke: '#b5aa98' }} />
+              ))}
+            </>
+          )}
+          {kind === 'surface-gravel' &&
+            Array.from({ length: Math.min(60, Math.round((w * d) / 900)) }, (_, i) => {
+              const x = -hw + ((i * 37) % w)
+              const y = -hd + ((i * 53 + 17) % d)
+              return <circle key={i} cx={x} cy={y} r={1.1} style={{ ...thinNoFill, stroke: '#a89f90' }} />
+            })}
+          {kind === 'surface-asphalt' && (
+            <line x1={0} y1={-hd + 4} x2={0} y2={hd - 4} style={{ ...thinNoFill, stroke: '#ffffff', strokeDasharray: '8 8' }} />
+          )}
+        </g>
+      )
+    }
     default:
       return <Rect w={w} d={d} />
   }

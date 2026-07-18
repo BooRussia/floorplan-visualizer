@@ -1,7 +1,16 @@
 import * as THREE from 'three'
-import { STORY_GAP, type Floor, type Furniture, type Opening, type Plan, type Pt, type Wall } from '../model/types'
-import { dist, toLocal, wallSamples } from '../model/geometry'
-import { MAT } from './materials'
+import {
+  STORY_GAP,
+  type Building,
+  type Floor,
+  type Furniture,
+  type Opening,
+  type Project,
+  type Pt,
+  type Wall,
+} from '../model/types'
+import { dist, toLocal, wallPointAt, wallSamples } from '../model/geometry'
+import { getGrassTexture, MAT, roomFloorMaterial } from './materials'
 import { buildFurniture } from './furniture3d'
 
 const FLOOR_Y = 0.12
@@ -10,15 +19,23 @@ const DOOR_HEAD = 80
 const WINDOW_SILL = 30
 const WINDOW_HEAD = 78
 
+export type FurniturePlace =
+  | { scope: 'site' }
+  | { scope: 'building'; index: number; floor: number }
+
 export interface BuiltFurniture {
   group: THREE.Group
-  floorIndex: number
+  place: FurniturePlace
+  /** world elevation of the floor the item stands on */
   elevation: number
+  /** building transform for local<->world conversion (undefined for site items) */
+  transform?: { x: number; y: number; rot: number }
 }
 
-export interface BuiltPlan {
+export interface BuiltProject {
   group: THREE.Group
-  floorGroups: THREE.Group[]
+  /** per-story groups across all buildings, for the visibility switcher */
+  floorGroups: { floor: number; group: THREE.Group }[]
   furniture: Map<string, BuiltFurniture>
   center: THREE.Vector3
   radius: number
@@ -225,6 +242,58 @@ function buildWindow(group: THREE.Group, w: Wall, o: Opening, s0: number, s1: nu
   group.add(holder)
 }
 
+function buildFence(group: THREE.Group, w: Wall) {
+  const type = w.fence!
+  const H = w.height
+  const L = dist(w.a, w.b) || wallSamples(w, 6).length * 6
+  const posts = Math.max(2, Math.round(L / 96) + 1)
+  const postMat = type === 'chain' ? MAT.chainMetal : type === 'picket' ? MAT.fenceWhite : MAT.fenceWood
+  for (let i = 0; i < posts; i++) {
+    const p = wallPointAt(w, i / (posts - 1))
+    const post = mesh(new THREE.BoxGeometry(3.5, H, 3.5), postMat)
+    post.position.set(p.x, H / 2, p.y)
+    group.add(post)
+  }
+  const samples = wallSamples(w, 96)
+  for (let i = 0; i < samples.length - 1; i++) {
+    const a = samples[i]
+    const b = samples[i + 1]
+    const segL = dist(a, b)
+    const ang = Math.atan2(b.y - a.y, b.x - a.x)
+    const place = (m: THREE.Mesh, y: number) => {
+      m.position.set((a.x + b.x) / 2, y, (a.y + b.y) / 2)
+      m.rotation.y = -ang
+      group.add(m)
+    }
+    if (type === 'privacy') {
+      place(mesh(new THREE.BoxGeometry(segL, H - 6, 1.6), MAT.fenceWood), (H - 6) / 2 + 4)
+      place(mesh(new THREE.BoxGeometry(segL, 3, 2.4), MAT.fenceWood), H - 2)
+    } else if (type === 'picket') {
+      place(mesh(new THREE.BoxGeometry(segL, 2.4, 1.4), MAT.fenceWhite), H * 0.35)
+      place(mesh(new THREE.BoxGeometry(segL, 2.4, 1.4), MAT.fenceWhite), H * 0.8)
+      const pickets = Math.max(2, Math.floor(segL / 8))
+      for (let k = 0; k < pickets; k++) {
+        const t = (k + 0.5) / pickets
+        const px = a.x + (b.x - a.x) * t
+        const pz = a.y + (b.y - a.y) * t
+        const picket = mesh(new THREE.BoxGeometry(2.6, H - 4, 1), MAT.fenceWhite)
+        picket.position.set(px, (H - 4) / 2, pz)
+        picket.rotation.y = -ang
+        group.add(picket)
+      }
+    } else if (type === 'chain') {
+      const mat = MAT.glass.clone()
+      mat.color.set('#9aa0a6')
+      mat.opacity = 0.25
+      place(mesh(new THREE.BoxGeometry(segL, H - 8, 0.4), mat, false), (H - 8) / 2 + 4)
+      place(mesh(new THREE.CylinderGeometry(0.8, 0.8, segL, 6).rotateZ(Math.PI / 2), MAT.chainMetal), H - 2)
+    } else {
+      place(mesh(new THREE.BoxGeometry(segL, 3.2, 2), MAT.fenceWood), H * 0.5)
+      place(mesh(new THREE.BoxGeometry(segL, 3.2, 2), MAT.fenceWood), H - 2)
+    }
+  }
+}
+
 function buildWall(group: THREE.Group, w: Wall, openings: Opening[]) {
   const H = w.height
   const th = w.thickness
@@ -382,29 +451,80 @@ function buildFloorAndSlab(group: THREE.Group, floor: Floor, level: number, hole
     y: oy + cy * CELL + CELL / 2,
   })
 
-  const positions: number[] = []
-  const uvs: number[] = []
-  const indices: number[] = []
-  const pushQuad = (x0: number, z0: number, x1: number, z1: number) => {
-    const base = positions.length / 3
-    positions.push(x0, FLOOR_Y, z0, x1, FLOOR_Y, z0, x1, FLOOR_Y, z1, x0, FLOOR_Y, z1)
+  // label connected interior regions (rooms) so paint seeds can assign materials
+  const region = new Int32Array(W * H).fill(-1)
+  let regionCount = 0
+  for (let i = 0; i < W * H; i++) {
+    if (region[i] !== -1 || !isInterior(i)) continue
+    const stack2 = [i]
+    region[i] = regionCount
+    while (stack2.length) {
+      const j = stack2.pop()!
+      const cx = j % W
+      const cy = (j / W) | 0
+      for (const [dx, dy] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ]) {
+        const x = cx + dx
+        const y = cy + dy
+        if (x < 0 || y < 0 || x >= W || y >= H) continue
+        const k = idx(x, y)
+        if (region[k] === -1 && isInterior(k)) {
+          region[k] = regionCount
+          stack2.push(k)
+        }
+      }
+    }
+    regionCount++
+  }
+  const regionMaterial: string[] = new Array(regionCount).fill('wood')
+  for (const paint of floor.paints ?? []) {
+    const cx = Math.round((paint.x - ox) / CELL)
+    const cy = Math.round((paint.y - oy) / CELL)
+    if (cx < 0 || cy < 0 || cx >= W || cy >= H) continue
+    const r = region[idx(cx, cy)]
+    if (r >= 0) regionMaterial[r] = paint.material
+  }
+
+  // one geometry per material
+  const byMat = new Map<string, { positions: number[]; uvs: number[]; indices: number[] }>()
+  const pushQuad = (material: string, x0: number, z0: number, x1: number, z1: number) => {
+    let acc = byMat.get(material)
+    if (!acc) {
+      acc = { positions: [], uvs: [], indices: [] }
+      byMat.set(material, acc)
+    }
+    const base = acc.positions.length / 3
+    acc.positions.push(x0, FLOOR_Y, z0, x1, FLOOR_Y, z0, x1, FLOOR_Y, z1, x0, FLOOR_Y, z1)
     const s = 1 / 96
-    uvs.push(x0 * s, z0 * s, x1 * s, z0 * s, x1 * s, z1 * s, x0 * s, z1 * s)
-    indices.push(base, base + 2, base + 1, base, base + 3, base + 2)
+    acc.uvs.push(x0 * s, z0 * s, x1 * s, z0 * s, x1 * s, z1 * s, x0 * s, z1 * s)
+    acc.indices.push(base, base + 2, base + 1, base, base + 3, base + 2)
   }
 
   const slabRuns: [number, number, number][] = []
   for (let cy = 0; cy < H; cy++) {
     let runStart = -1
+    let runMat = 'wood'
     let slabStart = -1
     for (let cx = 0; cx <= W; cx++) {
       const i = cx < W ? idx(cx, cy) : -1
       const holed = cx < W && holes.length > 0 && inFootprint(cellCenter(cx, cy), holes)
       const interior = cx < W && isInterior(i) && !holed
+      const cellMat = interior ? regionMaterial[region[i]] ?? 'wood' : ''
       const slabby = cx < W && (interior || (solid[i] === 1 && !holed))
-      if (interior && runStart < 0) runStart = cx
+      if (interior && runStart < 0) {
+        runStart = cx
+        runMat = cellMat
+      } else if (interior && runStart >= 0 && cellMat !== runMat) {
+        pushQuad(runMat, ox + runStart * CELL, oy + cy * CELL, ox + cx * CELL, oy + (cy + 1) * CELL)
+        runStart = cx
+        runMat = cellMat
+      }
       if (!interior && runStart >= 0) {
-        pushQuad(ox + runStart * CELL, oy + cy * CELL, ox + cx * CELL, oy + (cy + 1) * CELL)
+        pushQuad(runMat, ox + runStart * CELL, oy + cy * CELL, ox + cx * CELL, oy + (cy + 1) * CELL)
         runStart = -1
       }
       if (slabby && slabStart < 0) slabStart = cx
@@ -415,13 +535,14 @@ function buildFloorAndSlab(group: THREE.Group, floor: Floor, level: number, hole
     }
   }
 
-  if (positions.length) {
+  for (const [material, acc] of byMat) {
+    if (!acc.positions.length) continue
     const geo = new THREE.BufferGeometry()
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
-    geo.setIndex(indices)
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(acc.positions, 3))
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(acc.uvs, 2))
+    geo.setIndex(acc.indices)
     geo.computeVertexNormals()
-    group.add(mesh(geo, MAT.floor(), false, true))
+    group.add(mesh(geo, roomFloorMaterial(material), false, true))
   }
 
   // structural slab: below grade for the ground floor, story band for upper floors
@@ -436,18 +557,22 @@ function buildFloorAndSlab(group: THREE.Group, floor: Floor, level: number, hole
 
 // ---------- main ----------
 
-export function buildPlan(plan: Plan): BuiltPlan {
-  const group = new THREE.Group()
-  const floorGroups: THREE.Group[] = []
-  const furniture = new Map<string, BuiltFurniture>()
+function buildBuilding(
+  b: Building,
+  index: number,
+  furniture: Map<string, BuiltFurniture>,
+  floorGroups: { floor: number; group: THREE.Group }[]
+): THREE.Group {
+  const bg = new THREE.Group()
+  bg.position.set(b.x, 0, b.y)
+  bg.rotation.y = -THREE.MathUtils.degToRad(b.rot)
 
   let elevation = 0
-  plan.floors.forEach((floor, k) => {
+  b.floors.forEach((floor, k) => {
     const fg = new THREE.Group()
     fg.position.y = elevation
 
-    const holes =
-      k > 0 ? plan.floors[k - 1].furniture.filter((f) => f.kind === 'staircase') : []
+    const holes = k > 0 ? b.floors[k - 1].furniture.filter((f) => f.kind === 'staircase') : []
     buildFloorAndSlab(fg, floor, k, holes)
     for (const w of floor.walls) buildWall(fg, w, floor.openings)
 
@@ -456,23 +581,59 @@ export function buildPlan(plan: Plan): BuiltPlan {
       g.position.set(f.x, FLOOR_Y, f.y)
       g.rotation.y = -THREE.MathUtils.degToRad(f.rot)
       g.userData.furnId = f.id
-      furniture.set(f.id, { group: g, floorIndex: k, elevation })
+      furniture.set(f.id, {
+        group: g,
+        place: { scope: 'building', index, floor: k },
+        elevation,
+        transform: { x: b.x, y: b.y, rot: b.rot },
+      })
       fg.add(g)
     }
 
-    group.add(fg)
-    floorGroups.push(fg)
+    bg.add(fg)
+    floorGroups.push({ floor: k, group: fg })
     elevation += floor.height + STORY_GAP
   })
+  return bg
+}
 
-  const bbox = new THREE.Box3().setFromObject(group)
-  const center = new THREE.Vector3()
-  const size = new THREE.Vector3()
-  if (!bbox.isEmpty()) {
-    bbox.getCenter(center)
-    bbox.getSize(size)
+export function buildProject(project: Project): BuiltProject {
+  const group = new THREE.Group()
+  const floorGroups: { floor: number; group: THREE.Group }[] = []
+  const furniture = new Map<string, BuiltFurniture>()
+
+  // grass plot
+  const grassMat = new THREE.MeshStandardMaterial({ map: getGrassTexture(), roughness: 1 })
+  if (grassMat.map) {
+    const map = grassMat.map.clone()
+    map.repeat.set(project.plotW / 120, project.plotD / 120)
+    map.needsUpdate = true
+    grassMat.map = map
   }
-  const radius = Math.max(size.x, size.z, 120) / 2
+  const grass = mesh(new THREE.BoxGeometry(project.plotW, 6, project.plotD), grassMat, false, true)
+  grass.position.set(project.plotW / 2, -3, project.plotD / 2)
+  group.add(grass)
+
+  // site layer: fences + landscape/surfaces
+  for (const w of project.site.walls) {
+    if (w.fence) buildFence(group, w)
+    else buildWall(group, w, project.site.openings)
+  }
+  for (const f of project.site.furniture) {
+    const g = buildFurniture(f.kind, f.w, f.d, f.h)
+    g.position.set(f.x, 0.06, f.y)
+    g.rotation.y = -THREE.MathUtils.degToRad(f.rot)
+    g.userData.furnId = f.id
+    furniture.set(f.id, { group: g, place: { scope: 'site' }, elevation: 0 })
+    group.add(g)
+  }
+
+  project.buildings.forEach((b, i) => {
+    group.add(buildBuilding(b, i, furniture, floorGroups))
+  })
+
+  const center = new THREE.Vector3(project.plotW / 2, 0, project.plotD / 2)
+  const radius = Math.max(project.plotW, project.plotD, 240) / 2
 
   return { group, floorGroups, furniture, center, radius }
 }

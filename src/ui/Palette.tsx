@@ -3,22 +3,31 @@ import { CATALOG } from '../model/catalog'
 import { useStore } from '../model/store'
 import { GlyphPreview } from '../editor2d/glyphs'
 
+const PLOT_CATS = ['Landscape', 'Surfaces', 'Garage']
+
 export default function Palette() {
   const tool = useStore((s) => s.tool)
   const setTool = useStore((s) => s.setTool)
+  const isPlot = useStore((s) => s.mode.scope === 'plot')
   const [open, setOpen] = useState<Record<string, boolean>>({
     Kitchen: true,
     Bathroom: true,
     Bedroom: true,
     'Living room': true,
     Dining: true,
+    Landscape: true,
+    Surfaces: true,
   })
+
+  const cats = CATALOG.filter((c) =>
+    isPlot ? PLOT_CATS.includes(c.name) : !['Landscape', 'Surfaces'].includes(c.name)
+  )
 
   return (
     <aside className="palette">
-      <div className="palette-header">Library</div>
+      <div className="palette-header">{isPlot ? 'Site library' : 'Library'}</div>
       <div className="palette-scroll">
-        {CATALOG.map((cat) => (
+        {cats.map((cat) => (
           <section key={cat.name} className="palette-cat">
             <button
               className="palette-cat-title"

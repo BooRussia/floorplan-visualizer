@@ -1,8 +1,49 @@
-import type { Plan } from './types'
+import type { Project } from './types'
 
-// A ready-made 3-bed apartment, used on first launch and via the "Sample" button.
-export const SAMPLE_PLAN: Plan = {
-  floors: [
+// A ready-made property: 3-bed house on a 200' x 150' plot with driveway,
+// fencing and landscaping. Used on first launch and via the "Sample" button.
+export const SAMPLE_PROJECT: Project = {
+  plotW: 2400,
+  plotD: 1800,
+  site: {
+    id: 'site',
+    name: 'Site',
+    height: 96,
+    openings: [],
+    labels: [{ id: 'sl1', x: 1600, y: 1500, text: 'Driveway', size: 14 }],
+    guides: [],
+    paints: [],
+    walls: [
+      { id: 'fn1', a: { x: 48, y: 48 }, b: { x: 2352, y: 48 }, thickness: 3, bulge: 0, height: 72, fence: 'privacy' },
+      { id: 'fn2', a: { x: 48, y: 48 }, b: { x: 48, y: 1752 }, thickness: 3, bulge: 0, height: 72, fence: 'privacy' },
+      { id: 'fn3', a: { x: 2352, y: 48 }, b: { x: 2352, y: 1752 }, thickness: 3, bulge: 0, height: 48, fence: 'picket' },
+      { id: 'fn4', a: { x: 48, y: 1752 }, b: { x: 1450, y: 1752 }, thickness: 3, bulge: 0, height: 40, fence: 'rail' },
+    ],
+    furniture: [
+      { id: 'sf1', kind: 'surface-concrete', x: 1600, y: 1290, rot: 0, w: 144, d: 1020, h: 1 },
+      { id: 'sf2', kind: 'surface-pavers', x: 1470, y: 1030, rot: 25, w: 48, d: 260, h: 1 },
+      { id: 'sf3', kind: 'surface-mulch', x: 1000, y: 1010, rot: 0, w: 520, d: 70, h: 1 },
+      { id: 'sf4', kind: 'shrub', x: 820, y: 1010, rot: 0, w: 30, d: 30, h: 30 },
+      { id: 'sf5', kind: 'shrub', x: 1000, y: 1010, rot: 0, w: 34, d: 34, h: 32 },
+      { id: 'sf6', kind: 'shrub', x: 1180, y: 1010, rot: 0, w: 30, d: 30, h: 30 },
+      { id: 'sf7', kind: 'tree-oak', x: 350, y: 350, rot: 0, w: 220, d: 220, h: 300 },
+      { id: 'sf8', kind: 'tree-pine', x: 2120, y: 420, rot: 0, w: 140, d: 140, h: 340 },
+      { id: 'sf9', kind: 'tree-oak', x: 450, y: 1480, rot: 0, w: 260, d: 260, h: 330 },
+      { id: 'sf10', kind: 'flower-bed', x: 1740, y: 700, rot: 0, w: 90, d: 50, h: 8 },
+      { id: 'sf11', kind: 'mailbox', x: 1680, y: 1730, rot: 180, w: 10, d: 14, h: 44 },
+      { id: 'sf12', kind: 'stepping-stone', x: 1470, y: 1180, rot: 10, w: 20, d: 16, h: 1 },
+      { id: 'sf13', kind: 'stepping-stone', x: 1455, y: 1230, rot: -8, w: 20, d: 16, h: 1 },
+      { id: 'sf14', kind: 'boulder', x: 250, y: 1650, rot: 20, w: 50, d: 40, h: 26 },
+    ],
+  },
+  buildings: [
+    {
+      id: 'house',
+      name: 'House',
+      x: 864,
+      y: 480,
+      rot: 0,
+      floors: [
     {
       id: 'floor1',
       name: 'Floor 1',
@@ -77,6 +118,13 @@ export const SAMPLE_PLAN: Plan = {
         { id: 'l3', x: 108, y: 268, text: 'Bathroom', size: 9 },
         { id: 'l4', x: 555, y: 215, text: 'Living Room', size: 10 },
         { id: 'l5', x: 560, y: 395, text: 'Kitchen', size: 10 },
+      ],
+      paints: [
+        { id: 'p1', x: 108, y: 264, material: 'tile' },
+        { id: 'p2', x: 108, y: 90, material: 'carpet' },
+        { id: 'p3', x: 324, y: 90, material: 'carpet' },
+      ],
+        },
       ],
     },
   ],

@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { MAT } from './materials'
+import { MAT, surfaceMaterial } from './materials'
 
 // Builders produce a THREE.Group in inches: origin at footprint center,
 // resting on y=0, front of the item facing +z. Parametric: proportions are
@@ -619,10 +619,125 @@ function toolChest(g: G, w: number, d: number, h: number) {
   }
 }
 
+// ---------- landscape & site ----------
+
+function surfacePatch(g: G, kind: string, w: number, d: number) {
+  const mat = surfaceMaterial(kind)
+  if (mat.map) {
+    const map = mat.map.clone()
+    map.repeat.set(Math.max(0.25, w / 96), Math.max(0.25, d / 96))
+    map.needsUpdate = true
+    mat.map = map
+  }
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, kind === 'surface-mulch' ? 2.5 : 1.2, d), mat)
+  m.position.y = kind === 'surface-mulch' ? 1.25 : 0.6
+  m.receiveShadow = true
+  g.add(m)
+}
+
+function treeOak(g: G, w: number, d: number, h: number) {
+  const r = Math.min(w, d) / 2
+  const trunkH = h * 0.32
+  cyl(g, MAT.trunk, r * 0.06, r * 0.09, trunkH, 0, 0, 0, 10)
+  const blobs: [number, number, number, number][] = [
+    [0, trunkH + (h - trunkH) * 0.45, 0, r * 0.62],
+    [r * 0.4, trunkH + (h - trunkH) * 0.3, r * 0.15, r * 0.42],
+    [-r * 0.42, trunkH + (h - trunkH) * 0.34, -r * 0.1, r * 0.45],
+    [r * 0.05, trunkH + (h - trunkH) * 0.75, r * 0.3, r * 0.4],
+    [-r * 0.15, trunkH + (h - trunkH) * 0.72, -r * 0.35, r * 0.38],
+  ]
+  for (const [x, y, z, rr] of blobs) {
+    const s = new THREE.Mesh(new THREE.SphereGeometry(rr, 10, 8), MAT.leaf)
+    s.position.set(x, y, z)
+    s.castShadow = true
+    g.add(s)
+  }
+}
+
+function treePine(g: G, w: number, d: number, h: number) {
+  const r = Math.min(w, d) / 2
+  const trunkH = h * 0.22
+  cyl(g, MAT.trunk, r * 0.07, r * 0.1, trunkH, 0, 0, 0, 10)
+  const tiers = 4
+  for (let i = 0; i < tiers; i++) {
+    const tierR = r * (1 - i * 0.22)
+    const tierH = (h - trunkH) / (tiers - 0.6)
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(tierR, tierH * 1.35, 10), MAT.leafDark)
+    cone.position.y = trunkH + tierH * i + tierH * 0.55
+    cone.castShadow = true
+    g.add(cone)
+  }
+}
+
+function shrub(g: G, w: number, d: number, h: number) {
+  const r = Math.min(w, d) / 2
+  const s = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 8), MAT.leaf)
+  s.position.y = h * 0.55
+  s.scale.y = h / (r * 2) || 1
+  s.castShadow = true
+  g.add(s)
+}
+
+function flowerBed(g: G, w: number, d: number, h: number) {
+  surfacePatch(g, 'surface-mulch', w, d)
+  const mats = [MAT.flower1, MAT.flower2, MAT.flower3]
+  const n = Math.max(4, Math.round((w * d) / 500))
+  for (let i = 0; i < n; i++) {
+    const x = -w / 2 + 5 + ((i * 53) % Math.max(1, w - 10))
+    const z = -d / 2 + 5 + ((i * 31 + 11) % Math.max(1, d - 10))
+    cyl(g, MAT.leafDark, 0.5, 0.5, h * 0.5, x, 2, z, 6)
+    const bloom = new THREE.Mesh(new THREE.SphereGeometry(1.8, 8, 6), mats[i % 3])
+    bloom.position.set(x, 2 + h * 0.55, z)
+    bloom.castShadow = true
+    g.add(bloom)
+  }
+}
+
+function steppingStone(g: G, w: number, d: number) {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(w / 2, w / 2, 1.6, 12), MAT.stone)
+  m.scale.z = d / w
+  m.position.y = 0.8
+  m.receiveShadow = true
+  m.castShadow = true
+  g.add(m)
+}
+
+function boulder(g: G, w: number, d: number, h: number) {
+  const m = new THREE.Mesh(new THREE.DodecahedronGeometry(Math.min(w, d) / 2, 0), MAT.stone)
+  m.scale.set(w / Math.min(w, d), h / Math.min(w, d), d / Math.min(w, d))
+  m.position.y = h * 0.42
+  m.rotation.y = 0.6
+  m.castShadow = true
+  g.add(m)
+}
+
+function mailbox(g: G, w: number, d: number, h: number) {
+  box(g, MAT.woodDark, 2.2, h - 8, 2.2, 0, 0)
+  const bx = box(g, MAT.steel, w, 8, d, 0, h - 8)
+  bx.castShadow = true
+  const top = new THREE.Mesh(new THREE.CylinderGeometry(w / 2, w / 2, d, 12, 1, false, 0, Math.PI), MAT.steel)
+  top.rotation.x = Math.PI / 2
+  top.position.set(0, h - 4 + 4, 0)
+  g.add(top)
+  box(g, MAT.toolRed, 0.8, 5, 0.8, w / 2 + 0.4, h - 6)
+}
+
 // ---------- registry ----------
 
 const builders: Record<string, (g: G, w: number, d: number, h: number) => void> = {
   staircase,
+  'tree-oak': treeOak,
+  'tree-pine': treePine,
+  shrub,
+  'flower-bed': flowerBed,
+  'stepping-stone': (g, w, d) => steppingStone(g, w, d),
+  boulder,
+  mailbox,
+  'surface-concrete': (g, w, d) => surfacePatch(g, 'surface-concrete', w, d),
+  'surface-asphalt': (g, w, d) => surfacePatch(g, 'surface-asphalt', w, d),
+  'surface-gravel': (g, w, d) => surfacePatch(g, 'surface-gravel', w, d),
+  'surface-pavers': (g, w, d) => surfacePatch(g, 'surface-pavers', w, d),
+  'surface-mulch': (g, w, d) => surfacePatch(g, 'surface-mulch', w, d),
   car,
   pickup,
   camper,

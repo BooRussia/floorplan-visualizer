@@ -56,6 +56,94 @@ function makeWoodTexture(): THREE.Texture {
 let woodTex: THREE.Texture | null = null
 export const getWoodTexture = () => (woodTex ??= makeWoodTexture())
 
+/** Generic noise/pattern texture factory for ground surfaces. */
+function makeNoiseTexture(
+  base: [number, number, number],
+  speckle: [number, number, number],
+  density: number,
+  speckSize: number,
+  lines?: 'pavers' | 'tile'
+): THREE.Texture {
+  const S = 256
+  const canvas = document.createElement('canvas')
+  canvas.width = S
+  canvas.height = S
+  const ctx = canvas.getContext('2d')!
+  ctx.fillStyle = `rgb(${base[0]},${base[1]},${base[2]})`
+  ctx.fillRect(0, 0, S, S)
+  let seed = 13
+  const rand = () => {
+    seed = (seed * 16807) % 2147483647
+    return seed / 2147483647
+  }
+  for (let i = 0; i < density; i++) {
+    const t = 0.5 + rand()
+    ctx.fillStyle = `rgba(${speckle[0] * t | 0},${speckle[1] * t | 0},${speckle[2] * t | 0},${0.25 + rand() * 0.4})`
+    const r = speckSize * (0.5 + rand())
+    ctx.beginPath()
+    ctx.arc(rand() * S, rand() * S, r, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  if (lines === 'pavers') {
+    ctx.strokeStyle = 'rgba(120,110,95,0.6)'
+    ctx.lineWidth = 2
+    const step = S / 4 // 24" pavers over a 96" tile
+    for (let i = 0; i <= 4; i++) {
+      ctx.beginPath()
+      ctx.moveTo(i * step, 0)
+      ctx.lineTo(i * step, S)
+      ctx.stroke()
+      ctx.beginPath()
+      ctx.moveTo(0, i * step)
+      ctx.lineTo(S, i * step)
+      ctx.stroke()
+    }
+  } else if (lines === 'tile') {
+    ctx.strokeStyle = 'rgba(140,150,155,0.55)'
+    ctx.lineWidth = 1.6
+    const step = S / 8 // 12" tiles
+    for (let i = 0; i <= 8; i++) {
+      ctx.beginPath()
+      ctx.moveTo(i * step, 0)
+      ctx.lineTo(i * step, S)
+      ctx.stroke()
+      ctx.beginPath()
+      ctx.moveTo(0, i * step)
+      ctx.lineTo(S, i * step)
+      ctx.stroke()
+    }
+  }
+  const tex = new THREE.CanvasTexture(canvas)
+  tex.wrapS = THREE.RepeatWrapping
+  tex.wrapT = THREE.RepeatWrapping
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.anisotropy = 8
+  return tex
+}
+
+const texCache = new Map<string, THREE.Texture>()
+const tex = (key: string, make: () => THREE.Texture) => {
+  if (!texCache.has(key)) texCache.set(key, make())
+  return texCache.get(key)!
+}
+
+export const getGrassTexture = () =>
+  tex('grass', () => makeNoiseTexture([124, 152, 96], [88, 122, 66], 900, 2.2))
+export const getConcreteTexture = () =>
+  tex('concrete', () => makeNoiseTexture([206, 206, 202], [150, 150, 148], 500, 1.6))
+export const getAsphaltTexture = () =>
+  tex('asphalt', () => makeNoiseTexture([88, 90, 94], [140, 142, 146], 700, 1.4))
+export const getGravelTexture = () =>
+  tex('gravel', () => makeNoiseTexture([190, 184, 170], [120, 112, 98], 1400, 2.6))
+export const getPaversTexture = () =>
+  tex('pavers', () => makeNoiseTexture([210, 198, 178], [160, 148, 128], 300, 1.6, 'pavers'))
+export const getMulchTexture = () =>
+  tex('mulch', () => makeNoiseTexture([118, 88, 62], [70, 48, 32], 1200, 2.8))
+export const getTileTexture = () =>
+  tex('tile', () => makeNoiseTexture([232, 236, 237], [200, 208, 210], 200, 1.4, 'tile'))
+export const getStoneTexture = () =>
+  tex('stone', () => makeNoiseTexture([176, 170, 156], [120, 114, 100], 600, 2.4))
+
 // ---------- shared materials ----------
 
 const std = (color: string, roughness = 0.85, metalness = 0.02) =>
@@ -101,4 +189,45 @@ export const MAT = {
   toolRed: std('#b8412f', 0.45, 0.25),
   hullNavy: std('#3d5a80', 0.4, 0.3),
   camperShell: std('#f2f1ec', 0.5, 0.15),
+  fenceWood: std('#c9b18e', 0.85),
+  fenceWhite: std('#f4f4f2', 0.8),
+  chainMetal: std('#a9adb2', 0.5, 0.6),
+  trunk: std('#7d6248', 0.9),
+  leafDark: std('#5d7f52', 0.9),
+  stone: std('#b3ada0', 0.95),
+  flower1: std('#d96a7f', 0.85),
+  flower2: std('#e5c04f', 0.85),
+  flower3: std('#8f78c9', 0.85),
+}
+
+/** Floor material for painted rooms. */
+export function roomFloorMaterial(material: string): THREE.MeshStandardMaterial {
+  switch (material) {
+    case 'tile':
+      return new THREE.MeshStandardMaterial({ map: getTileTexture(), roughness: 0.35 })
+    case 'carpet':
+      return new THREE.MeshStandardMaterial({ color: '#cfc8bd', roughness: 1 })
+    case 'concrete':
+      return new THREE.MeshStandardMaterial({ map: getConcreteTexture(), roughness: 0.85 })
+    case 'stone':
+      return new THREE.MeshStandardMaterial({ map: getStoneTexture(), roughness: 0.8 })
+    default:
+      return new THREE.MeshStandardMaterial({ map: getWoodTexture(), roughness: 0.7, metalness: 0.02 })
+  }
+}
+
+/** Ground surface material for site patches. */
+export function surfaceMaterial(kind: string): THREE.MeshStandardMaterial {
+  switch (kind) {
+    case 'surface-asphalt':
+      return new THREE.MeshStandardMaterial({ map: getAsphaltTexture(), roughness: 0.95 })
+    case 'surface-gravel':
+      return new THREE.MeshStandardMaterial({ map: getGravelTexture(), roughness: 1 })
+    case 'surface-pavers':
+      return new THREE.MeshStandardMaterial({ map: getPaversTexture(), roughness: 0.85 })
+    case 'surface-mulch':
+      return new THREE.MeshStandardMaterial({ map: getMulchTexture(), roughness: 1 })
+    default:
+      return new THREE.MeshStandardMaterial({ map: getConcreteTexture(), roughness: 0.9 })
+  }
 }
