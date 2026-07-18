@@ -350,8 +350,8 @@ export default function Toolbar() {
               onClick={() => useStore.getState().setSnapOn(!snapOn)}
               title={
                 snapOn
-                  ? 'Snapping ON — endpoints, marks & 45° angles (S toggles, hold Alt for free angles)'
-                  : 'Snapping OFF — free drawing on the 1" grid (S toggles, hold Alt to snap)'
+                  ? 'Angle snap ON — lines lock to 45°/90° (S toggles, hold Alt for free angles). Endpoints & marks always snap.'
+                  : 'Angle snap OFF — draw at any angle (S toggles, hold Alt to lock 45°). Endpoints & marks still snap.'
               }
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">

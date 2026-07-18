@@ -259,9 +259,10 @@ export default function Editor2D() {
   // ---------- snapping ----------
   const snapForDraw = useCallback(
     (raw: Pt, from: Pt | null, altKey: boolean): { p: Pt; mark: SnapMark | null } => {
-      // S toggles the magnet; holding Alt momentarily inverts it
-      const magnet = useStore.getState().snapOn ? !altKey : altKey
-      if (!magnet) return { p: snapPoint(raw, 1), mark: null }
+      // S toggles ANGLE snapping only; holding Alt momentarily inverts it.
+      // Point magnets (endpoints, marks, wall lines) always stay active so
+      // you can connect to existing geometry at any angle.
+      const angleSnap = useStore.getState().snapOn ? !altKey : altKey
       const floor = fl()
       const ppi = viewRef.current.ppi
       // 0) measurement guide points
@@ -301,8 +302,8 @@ export default function Editor2D() {
         const d0 = bestWT * L
         return { p, mark: { p: bestWP, along: { d0, d1: L - d0 } } }
       }
-      // 3) angle + length snap from previous point
-      if (from) {
+      // 3) angle + length snap from previous point (toggleable)
+      if (from && angleSnap) {
         const snapped = snapAngle(from, raw)
         const d = dist(from, snapped)
         const rounded = snapTo(d, 1)
