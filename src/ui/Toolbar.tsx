@@ -304,6 +304,16 @@ export default function Toolbar() {
             )}
 
             <ToolButton
+              active={tool.type === 'box'}
+              onClick={() => setTool({ type: 'box' })}
+              title={isPlot ? 'Draw a fenced rectangle (B): drag, or click for exact sizes' : 'Draw a room box (B): drag for size, or click to type exact dimensions like 40×60'}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <rect x="2.5" y="3.5" width="11" height="9" stroke="currentColor" strokeWidth="1.6" fill="none" />
+              </svg>
+              Box
+            </ToolButton>
+            <ToolButton
               active={tool.type === 'label'}
               onClick={() => setTool({ type: 'label' })}
               title="Add label (T)"

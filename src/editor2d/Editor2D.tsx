@@ -158,6 +158,10 @@ export default function Editor2D() {
     width: 144,
     material: 'asphalt',
   })
+  const [boxDraft, setBoxDraft] = useState<{ a: Pt; cur: Pt; moved: boolean } | null>(null)
+  const boxDraftRef = useRef(boxDraft)
+  boxDraftRef.current = boxDraft
+  const [boxDialog, setBoxDialog] = useState<{ world: Pt; w: string; d: string } | null>(null)
   const [floatInput, setFloatInput] = useState<FloatInput | null>(null)
   const [floatValue, setFloatValue] = useState('')
   const [spaceDown, setSpaceDown] = useState(false)
@@ -169,6 +173,10 @@ export default function Editor2D() {
     setSnapMark(null)
     setOpeningGhost(null)
     if (tool.type !== 'road') setRoadDraft(null)
+    if (tool.type !== 'box') {
+      setBoxDraft(null)
+      setBoxDialog(null)
+    }
   }, [tool])
 
   // ---------- sizing ----------
@@ -554,6 +562,30 @@ export default function Editor2D() {
     st.select({ kind: 'road', id })
   }, [])
 
+  /** Create a rectangular room (walls) or enclosure (fences) from two corners. */
+  const createBox = useCallback((c1: Pt, c2: Pt) => {
+    const x0 = Math.min(c1.x, c2.x)
+    const x1 = Math.max(c1.x, c2.x)
+    const y0 = Math.min(c1.y, c2.y)
+    const y1 = Math.max(c1.y, c2.y)
+    if (x1 - x0 < 24 || y1 - y0 < 24) return
+    const st = useStore.getState()
+    st.checkpoint()
+    const plot = st.mode.scope === 'plot'
+    const params = plot
+      ? { thickness: 3, bulge: 0, height: FENCE_HEIGHTS.privacy, fence: 'privacy' as const }
+      : { thickness: 6, bulge: 0, height: fl().height }
+    const corners: Pt[] = [
+      { x: x0, y: y0 },
+      { x: x1, y: y0 },
+      { x: x1, y: y1 },
+      { x: x0, y: y1 },
+    ]
+    for (let i = 0; i < 4; i++) {
+      st.addWall({ a: corners[i], b: corners[(i + 1) % 4], ...params })
+    }
+  }, [])
+
   // ---------- background pointer handlers ----------
   const onSvgPointerDown = useCallback(
     (e: React.PointerEvent) => {
@@ -588,6 +620,15 @@ export default function Editor2D() {
       if (tool.type === 'paint') {
         const p = snapPoint(world, 1)
         st.addPaint(p.x, p.y, tool.material)
+        return
+      }
+
+      if (tool.type === 'box') {
+        e.preventDefault()
+        setBoxDialog(null)
+        const { p, mark } = snapForDraw(world, null, e.altKey)
+        setSnapMark(mark)
+        setBoxDraft({ a: p, cur: p, moved: false })
         return
       }
 
@@ -664,6 +705,20 @@ export default function Editor2D() {
       if (dragRef.current) return
       const world = worldFromClient(e.clientX, e.clientY)
       setHoverWorld(world)
+
+      if (tool.type === 'box' && boxDraftRef.current) {
+        const d = boxDraftRef.current
+        const { p } = snapForDraw(world, null, e.altKey)
+        let cur = p
+        if (e.shiftKey) {
+          const sx = Math.sign(p.x - d.a.x) || 1
+          const sy = Math.sign(p.y - d.a.y) || 1
+          const side = Math.max(Math.abs(p.x - d.a.x), Math.abs(p.y - d.a.y))
+          cur = { x: d.a.x + sx * side, y: d.a.y + sy * side }
+        }
+        setBoxDraft({ a: d.a, cur, moved: d.moved || dist(d.a, cur) > 6 })
+        return
+      }
 
       if (tool.type === 'road' && roadDraftRef.current) {
         const d = roadDraftRef.current
@@ -753,7 +808,10 @@ export default function Editor2D() {
         return
       }
       if (e.key === 'Escape') {
-        if (roadDraftRef.current) {
+        if (boxDraftRef.current || boxDialog) {
+          setBoxDraft(null)
+          setBoxDialog(null)
+        } else if (roadDraftRef.current) {
           setRoadDraft(null)
           penDragRef.current = false
         } else if (draftRef.current) setDraft(null)
@@ -808,6 +866,9 @@ export default function Editor2D() {
           break
         case 's':
           st.setSnapOn(!st.snapOn)
+          break
+        case 'b':
+          st.setTool({ type: 'box' })
           break
         case 'd':
           st.setTool({ type: 'opening', opening: 'door' })
@@ -868,7 +929,7 @@ export default function Editor2D() {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
     }
-  }, [floatInput, setDraft, finishRoad])
+  }, [floatInput, boxDialog, setDraft, finishRoad])
 
   // ---------- draw-length input ----------
   const applyDrawValue = useCallback(() => {
@@ -997,6 +1058,16 @@ export default function Editor2D() {
         onPointerMove={onSvgPointerMove}
         onPointerUp={() => {
           penDragRef.current = false
+          const bd = boxDraftRef.current
+          if (bd) {
+            if (bd.moved && Math.abs(bd.cur.x - bd.a.x) >= 24 && Math.abs(bd.cur.y - bd.a.y) >= 24) {
+              createBox(bd.a, bd.cur)
+            } else {
+              setBoxDialog({ world: bd.a, w: "40'", d: "60'" })
+            }
+            setBoxDraft(null)
+            setSnapMark(null)
+          }
         }}
         onDoubleClick={onSvgDoubleClick}
       >
@@ -1659,6 +1730,43 @@ export default function Editor2D() {
             )
           })()}
 
+        {/* box draft preview */}
+        {boxDraft &&
+          boxDraft.moved &&
+          (() => {
+            const x0 = Math.min(boxDraft.a.x, boxDraft.cur.x)
+            const y0 = Math.min(boxDraft.a.y, boxDraft.cur.y)
+            const bw = Math.abs(boxDraft.cur.x - boxDraft.a.x)
+            const bd = Math.abs(boxDraft.cur.y - boxDraft.a.y)
+            return (
+              <g pointerEvents="none">
+                <rect
+                  x={x0}
+                  y={y0}
+                  width={bw}
+                  height={bd}
+                  fill={ACCENT}
+                  fillOpacity={0.07}
+                  stroke={ACCENT}
+                  strokeWidth={isPlot ? 2.5 : 5}
+                  strokeOpacity={0.85}
+                />
+                <text
+                  x={x0 + bw / 2}
+                  y={y0 + bd / 2}
+                  fontSize={fontWorld * 1.15}
+                  fill={ACCENT}
+                  fontWeight={700}
+                  fontFamily="Inter, system-ui, sans-serif"
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                >
+                  {`${fmtLenShort(bw)} × ${fmtLenShort(bd)}`}
+                </text>
+              </g>
+            )
+          })()}
+
         {/* wall draft preview */}
         {draft && draft.cur && draft.pts.length > 0 && (
           <g pointerEvents="none">
@@ -1845,6 +1953,88 @@ export default function Editor2D() {
         />
       )}
 
+      {/* box size dialog */}
+      {boxDialog &&
+        (() => {
+          const sp = screenFromWorld(boxDialog.world)
+          const presets: [number, number][] = [
+            [20, 20],
+            [24, 24],
+            [30, 40],
+            [40, 60],
+          ]
+          const create = () => {
+            const w = parseLen(boxDialog.w)
+            const d = parseLen(boxDialog.d)
+            if (w == null || d == null || w < 24 || d < 24) return
+            createBox(boxDialog.world, {
+              x: boxDialog.world.x + w,
+              y: boxDialog.world.y + d,
+            })
+            setBoxDialog(null)
+          }
+          return (
+            <div
+              className="box-dialog"
+              style={{
+                left: Math.min(sp.x, sizeRef.current.w - 240),
+                top: Math.min(sp.y, sizeRef.current.h - 190),
+              }}
+            >
+              <div className="box-dialog-title">
+                {isPlot ? 'Fenced rectangle' : 'Room box'} at this corner
+              </div>
+              <div className="box-dialog-presets">
+                {presets.map(([w, d]) => (
+                  <button
+                    key={`${w}x${d}`}
+                    className="mini-btn"
+                    onClick={() => {
+                      createBox(boxDialog.world, {
+                        x: boxDialog.world.x + w * 12,
+                        y: boxDialog.world.y + d * 12,
+                      })
+                      setBoxDialog(null)
+                    }}
+                  >
+                    {w}×{d}
+                  </button>
+                ))}
+              </div>
+              <div className="box-dialog-row">
+                <input
+                  value={boxDialog.w}
+                  onChange={(e) => setBoxDialog({ ...boxDialog, w: e.target.value })}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') create()
+                    else if (e.key === 'Escape') setBoxDialog(null)
+                    e.stopPropagation()
+                  }}
+                  autoFocus
+                />
+                <span>×</span>
+                <input
+                  value={boxDialog.d}
+                  onChange={(e) => setBoxDialog({ ...boxDialog, d: e.target.value })}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') create()
+                    else if (e.key === 'Escape') setBoxDialog(null)
+                    e.stopPropagation()
+                  }}
+                />
+              </div>
+              <div className="box-dialog-row">
+                <button className="mini-btn" onClick={() => setBoxDialog(null)}>
+                  Cancel
+                </button>
+                <button className="box-dialog-create" onClick={create}>
+                  Create
+                </button>
+              </div>
+            </div>
+          )
+        })()}
+
       {/* road finish button */}
       {roadDraft && roadDraft.nodes.length >= 2 && (
         <button className="road-done" onClick={finishRoad}>
@@ -1881,6 +2071,10 @@ export default function Editor2D() {
                 ? 'Click to add a label'
                 : tool.type === 'measure'
                   ? 'Click to drop a reference mark · marks show distances to nearby walls and snap like endpoints'
+                  : tool.type === 'box'
+                    ? boxDraft && boxDraft.moved
+                      ? 'Release to create · hold Shift for a square'
+                      : 'Drag to draw a box · or click once to type an exact size (e.g. 40 × 60)'
                   : tool.type === 'road'
                     ? roadDraft
                       ? 'Click to add points · click-drag for curves · Enter or ✓ to generate the road · Esc cancels'

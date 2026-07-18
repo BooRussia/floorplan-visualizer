@@ -155,6 +155,7 @@ export type Tool =
   | { type: 'select' }
   | { type: 'pan' }
   | { type: 'wall' }
+  | { type: 'box' }
   | { type: 'fence'; fence: FenceType }
   | { type: 'opening'; opening: OpeningType }
   | { type: 'place'; kind: string }
