@@ -61,6 +61,7 @@ const OPENING_DEFAULTS: Record<string, number> = {
   opening: 42,
   window: 36,
   garage: 192, // 16' double garage door
+  gate: 48,
 }
 
 interface Viewport {

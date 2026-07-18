@@ -199,6 +199,26 @@ export function OpeningGlyph({
         />
       )
       break
+    case 'gate': {
+      // fence gate: hinge post, swinging leaf + arc (double leaf when wide)
+      const dbl = o.width > 72
+      const lw = dbl ? hw : o.width
+      inner = (
+        <g transform={`scale(${sx} ${sy})`}>
+          <line x1={-hw} y1={0} x2={-hw} y2={-lw} style={leafStyle} />
+          <path d={`M ${-hw + lw} 0 A ${lw} ${lw} 0 0 0 ${-hw} ${-lw}`} style={arcStyle} />
+          {dbl ? (
+            <>
+              <line x1={hw} y1={0} x2={hw} y2={-lw} style={leafStyle} />
+              <path d={`M ${hw - lw} 0 A ${lw} ${lw} 0 0 1 ${hw} ${-lw}`} style={arcStyle} />
+            </>
+          ) : null}
+          <circle cx={-hw} cy={0} r={2.4} fill="var(--fence-color)" />
+          <circle cx={hw} cy={0} r={2.4} fill="var(--fence-color)" />
+        </g>
+      )
+      break
+    }
     case 'garage': {
       // sectional door panel in the wall plane + dashed overhead-track zone inside
       const trackDepth = Math.min(o.height ?? 84, o.width * 0.6)

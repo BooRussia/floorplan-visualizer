@@ -69,7 +69,16 @@ const OPENING_LABELS: Record<OpeningType, string> = {
   opening: 'Cased opening',
   window: 'Window',
   garage: 'Garage door',
+  gate: 'Fence gate',
 }
+
+const GATE_WIDTHS = [
+  { label: `3'`, inches: 36 },
+  { label: `4'`, inches: 48 },
+  { label: `8'`, inches: 96 },
+  { label: `10'`, inches: 120 },
+  { label: `12'`, inches: 144 },
+]
 
 const GARAGE_WIDTHS = [
   { label: `8'`, inches: 96 },
@@ -520,6 +529,22 @@ export default function PropertiesPanel() {
               st.updateOpening(o.id, { width: Math.min(300, v) })
             }}
           />
+          {o.type === 'gate' && (
+            <div className="prop-row">
+              {GATE_WIDTHS.map((g) => (
+                <button
+                  key={g.label}
+                  className="mini-btn"
+                  onClick={() => {
+                    st.checkpoint()
+                    st.updateOpening(o.id, { width: g.inches })
+                  }}
+                >
+                  {g.label}
+                </button>
+              ))}
+            </div>
+          )}
           {o.type === 'garage' && (
             <>
               <div className="prop-row">
@@ -559,7 +584,7 @@ export default function PropertiesPanel() {
                 >
                   Flip side
                 </button>
-                {(o.type === 'door' || o.type === 'sliding' || o.type === 'bifold') && (
+                {(o.type === 'door' || o.type === 'sliding' || o.type === 'bifold' || o.type === 'gate') && (
                   <button
                     className="mini-btn"
                     onClick={() => {

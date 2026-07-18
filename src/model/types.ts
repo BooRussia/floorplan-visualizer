@@ -27,6 +27,7 @@ export type OpeningType =
   | 'opening'
   | 'window'
   | 'garage'
+  | 'gate'
 
 export interface Opening {
   id: string

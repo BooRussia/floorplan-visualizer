@@ -243,54 +243,165 @@ function buildWindow(group: THREE.Group, w: Wall, o: Opening, s0: number, s1: nu
   group.add(holder)
 }
 
-function buildFence(group: THREE.Group, w: Wall) {
+function fenceMat(type: string) {
+  return type === 'chain' ? MAT.chainMetal : type === 'picket' ? MAT.fenceWhite : MAT.fenceWood
+}
+
+/** Infill between two points for one fence style. */
+function fenceSegment(group: THREE.Group, a: Pt, b: Pt, type: string, H: number) {
+  const segL = dist(a, b)
+  if (segL < 2) return
+  const ang = Math.atan2(b.y - a.y, b.x - a.x)
+  const place = (m: THREE.Mesh, y: number) => {
+    m.position.set((a.x + b.x) / 2, y, (a.y + b.y) / 2)
+    m.rotation.y = -ang
+    group.add(m)
+  }
+  if (type === 'privacy') {
+    place(mesh(new THREE.BoxGeometry(segL, H - 6, 1.6), MAT.fenceWood), (H - 6) / 2 + 4)
+    place(mesh(new THREE.BoxGeometry(segL, 3, 2.4), MAT.fenceWood), H - 2)
+  } else if (type === 'picket') {
+    place(mesh(new THREE.BoxGeometry(segL, 2.4, 1.4), MAT.fenceWhite), H * 0.35)
+    place(mesh(new THREE.BoxGeometry(segL, 2.4, 1.4), MAT.fenceWhite), H * 0.8)
+    const pickets = Math.max(2, Math.floor(segL / 8))
+    for (let k = 0; k < pickets; k++) {
+      const t = (k + 0.5) / pickets
+      const px = a.x + (b.x - a.x) * t
+      const pz = a.y + (b.y - a.y) * t
+      const picket = mesh(new THREE.BoxGeometry(2.6, H - 4, 1), MAT.fenceWhite)
+      picket.position.set(px, (H - 4) / 2, pz)
+      picket.rotation.y = -ang
+      group.add(picket)
+    }
+  } else if (type === 'chain') {
+    const mat = MAT.glass.clone()
+    mat.color.set('#9aa0a6')
+    mat.opacity = 0.25
+    place(mesh(new THREE.BoxGeometry(segL, H - 8, 0.4), mat, false), (H - 8) / 2 + 4)
+    place(mesh(new THREE.CylinderGeometry(0.8, 0.8, segL, 6).rotateZ(Math.PI / 2), MAT.chainMetal), H - 2)
+  } else {
+    place(mesh(new THREE.BoxGeometry(segL, 3.2, 2), MAT.fenceWood), H * 0.5)
+    place(mesh(new THREE.BoxGeometry(segL, 3.2, 2), MAT.fenceWood), H - 2)
+  }
+}
+
+/** One swinging gate leaf: frame + diagonal brace + style-matched infill. */
+function gateLeaf(group: THREE.Group, hinge: Pt, ang: number, openDeg: number, lw: number, H: number, type: string) {
+  const gh = Math.max(24, H - 4)
+  const m = fenceMat(type)
+  const pivot = new THREE.Group()
+  pivot.position.set(hinge.x, 0, hinge.y)
+  pivot.rotation.y = -ang + THREE.MathUtils.degToRad(openDeg)
+  const bar = (w: number, h: number, d: number, x: number, y: number, z = 0) => {
+    const bm = mesh(new THREE.BoxGeometry(w, h, d), m)
+    bm.position.set(x, y, z)
+    pivot.add(bm)
+  }
+  bar(2, gh, 2, 1, gh / 2 + 2)
+  bar(2, gh, 2, lw - 1, gh / 2 + 2)
+  bar(lw - 2, 2.4, 2, lw / 2, gh + 1)
+  bar(lw - 2, 2.4, 2, lw / 2, 4)
+  // diagonal brace
+  const brace = mesh(new THREE.BoxGeometry(Math.hypot(lw - 4, gh - 8), 2, 1.4), m)
+  brace.position.set(lw / 2, gh / 2 + 2, 0)
+  brace.rotation.z = Math.atan2(gh - 8, lw - 4)
+  pivot.add(brace)
+  if (type === 'privacy') {
+    const panel = mesh(new THREE.BoxGeometry(lw - 4, gh - 8, 1), MAT.fenceWood)
+    panel.position.set(lw / 2, gh / 2 + 2, 0.8)
+    pivot.add(panel)
+  } else if (type === 'picket') {
+    const pickets = Math.max(2, Math.floor(lw / 8))
+    for (let k = 0; k < pickets; k++) {
+      const x = ((k + 0.5) * lw) / pickets
+      const p = mesh(new THREE.BoxGeometry(2.4, gh - 4, 1), MAT.fenceWhite)
+      p.position.set(x, gh / 2 + 1, 0.8)
+      pivot.add(p)
+    }
+  } else if (type === 'chain') {
+    const mat = MAT.glass.clone()
+    mat.color.set('#9aa0a6')
+    mat.opacity = 0.25
+    const mesh2 = mesh(new THREE.BoxGeometry(lw - 4, gh - 8, 0.4), mat, false)
+    mesh2.position.set(lw / 2, gh / 2 + 2, 0)
+    pivot.add(mesh2)
+  } else {
+    bar(lw - 2, 2.6, 1.6, lw / 2, gh * 0.55)
+  }
+  group.add(pivot)
+}
+
+function buildFence(group: THREE.Group, w: Wall, openings: Opening[]) {
   const type = w.fence!
   const H = w.height
-  const L = dist(w.a, w.b) || wallSamples(w, 6).length * 6
-  const posts = Math.max(2, Math.round(L / 96) + 1)
-  const postMat = type === 'chain' ? MAT.chainMetal : type === 'picket' ? MAT.fenceWhite : MAT.fenceWood
-  for (let i = 0; i < posts; i++) {
-    const p = wallPointAt(w, i / (posts - 1))
-    const post = mesh(new THREE.BoxGeometry(3.5, H, 3.5), postMat)
-    post.position.set(p.x, H / 2, p.y)
-    group.add(post)
+  const postMat = fenceMat(type)
+  const post = (p: Pt, big = false) => {
+    const pm = mesh(new THREE.BoxGeometry(big ? 4.5 : 3.5, H + (big ? 2 : 0), big ? 4.5 : 3.5), postMat)
+    pm.position.set(p.x, (H + (big ? 2 : 0)) / 2, p.y)
+    group.add(pm)
   }
-  const samples = wallSamples(w, 96)
-  for (let i = 0; i < samples.length - 1; i++) {
-    const a = samples[i]
-    const b = samples[i + 1]
-    const segL = dist(a, b)
-    const ang = Math.atan2(b.y - a.y, b.x - a.x)
-    const place = (m: THREE.Mesh, y: number) => {
-      m.position.set((a.x + b.x) / 2, y, (a.y + b.y) / 2)
-      m.rotation.y = -ang
-      group.add(m)
+
+  const L = dist(w.a, w.b)
+  const gates = openings
+    .filter((o) => o.wallId === w.id && o.type === 'gate' && !w.bulge)
+    .map((o) => {
+      const c = o.t * L
+      return { o, s0: Math.max(0, c - o.width / 2), s1: Math.min(L, c + o.width / 2) }
+    })
+    .sort((x, y) => x.s0 - y.s0)
+
+  if (!gates.length) {
+    // no gates: posts + infill along the (possibly curved) line
+    const len = w.bulge ? wallSamples(w, 6).length * 6 : L
+    const posts = Math.max(2, Math.round(len / 96) + 1)
+    for (let i = 0; i < posts; i++) post(wallPointAt(w, i / (posts - 1)))
+    const samples = wallSamples(w, 96)
+    for (let i = 0; i < samples.length - 1; i++) {
+      fenceSegment(group, samples[i], samples[i + 1], type, H)
     }
-    if (type === 'privacy') {
-      place(mesh(new THREE.BoxGeometry(segL, H - 6, 1.6), MAT.fenceWood), (H - 6) / 2 + 4)
-      place(mesh(new THREE.BoxGeometry(segL, 3, 2.4), MAT.fenceWood), H - 2)
-    } else if (type === 'picket') {
-      place(mesh(new THREE.BoxGeometry(segL, 2.4, 1.4), MAT.fenceWhite), H * 0.35)
-      place(mesh(new THREE.BoxGeometry(segL, 2.4, 1.4), MAT.fenceWhite), H * 0.8)
-      const pickets = Math.max(2, Math.floor(segL / 8))
-      for (let k = 0; k < pickets; k++) {
-        const t = (k + 0.5) / pickets
-        const px = a.x + (b.x - a.x) * t
-        const pz = a.y + (b.y - a.y) * t
-        const picket = mesh(new THREE.BoxGeometry(2.6, H - 4, 1), MAT.fenceWhite)
-        picket.position.set(px, (H - 4) / 2, pz)
-        picket.rotation.y = -ang
-        group.add(picket)
-      }
-    } else if (type === 'chain') {
-      const mat = MAT.glass.clone()
-      mat.color.set('#9aa0a6')
-      mat.opacity = 0.25
-      place(mesh(new THREE.BoxGeometry(segL, H - 8, 0.4), mat, false), (H - 8) / 2 + 4)
-      place(mesh(new THREE.CylinderGeometry(0.8, 0.8, segL, 6).rotateZ(Math.PI / 2), MAT.chainMetal), H - 2)
+    return
+  }
+
+  const at = (s: number): Pt => ({
+    x: w.a.x + ((w.b.x - w.a.x) * s) / (L || 1),
+    y: w.a.y + ((w.b.y - w.a.y) * s) / (L || 1),
+  })
+  const ang = Math.atan2(w.b.y - w.a.y, w.b.x - w.a.x)
+
+  // clear ranges between gates
+  const ranges: [number, number][] = []
+  let cursor = 0
+  for (const g of gates) {
+    if (g.s0 > cursor) ranges.push([cursor, g.s0])
+    cursor = g.s1
+  }
+  if (cursor < L) ranges.push([cursor, L])
+
+  for (const [r0, r1] of ranges) {
+    const runL = r1 - r0
+    const posts = Math.max(2, Math.round(runL / 96) + 1)
+    let prev = at(r0)
+    post(prev)
+    for (let i = 1; i < posts; i++) {
+      const p = at(r0 + (runL * i) / (posts - 1))
+      post(p)
+      fenceSegment(group, prev, p, type, H)
+      prev = p
+    }
+  }
+
+  for (const { o, s0, s1 } of gates) {
+    post(at(s0), true)
+    post(at(s1), true)
+    const width = s1 - s0
+    const side = o.flipSwing ? 1 : -1
+    if (width > 72) {
+      gateLeaf(group, at(s0), ang, side * 45, width / 2 - 1, H, type)
+      gateLeaf(group, at(s1), ang, 180 - side * 45, width / 2 - 1, H, type)
+    } else if (o.flipHinge) {
+      gateLeaf(group, at(s1), ang, 180 - side * 50, width - 1, H, type)
     } else {
-      place(mesh(new THREE.BoxGeometry(segL, 3.2, 2), MAT.fenceWood), H * 0.5)
-      place(mesh(new THREE.BoxGeometry(segL, 3.2, 2), MAT.fenceWood), H - 2)
+      gateLeaf(group, at(s0), ang, side * 50, width - 1, H, type)
     }
   }
 }
@@ -673,7 +784,7 @@ export function buildProject(project: Project): BuiltProject {
   // site layer: roads under everything, then fences + landscape/surfaces
   for (const r of project.site.roads) buildRoad(group, r)
   for (const w of project.site.walls) {
-    if (w.fence) buildFence(group, w)
+    if (w.fence) buildFence(group, w, project.site.openings)
     else buildWall(group, w, project.site.openings)
   }
   for (const f of project.site.furniture) {

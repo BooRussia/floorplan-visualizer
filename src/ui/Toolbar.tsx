@@ -167,7 +167,8 @@ export default function Toolbar() {
         <span className="tb-logo">▦</span> Floorplan Visualizer
       </div>
 
-      {view === '2d' && (
+      <div className="tb-scroll">
+        {view === '2d' && (
         <>
           {/* breadcrumb: plot ↔ building */}
           <div className="tb-crumbs">
@@ -233,6 +234,19 @@ export default function Toolbar() {
                   <circle cx="14" cy="13" r="1.6" fill="currentColor" />
                 </svg>
                 Road
+              </ToolButton>
+            )}
+            {isPlot && (
+              <ToolButton
+                active={tool.type === 'opening' && tool.opening === 'gate'}
+                onClick={() => setTool({ type: 'opening', opening: 'gate' })}
+                title="Place a gate on a fence — width is adjustable after placing"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M2 6v7M14 6v7M5 6v7M8 6v7M11 6v7" stroke="currentColor" strokeWidth="1.3" />
+                  <path d="M2 6c4-4 8-4 12 0" stroke="currentColor" strokeWidth="1.4" fill="none" />
+                </svg>
+                Gate
               </ToolButton>
             )}
             {isPlot ? (
@@ -418,24 +432,25 @@ export default function Toolbar() {
         </>
       )}
 
-      <div className="tb-spacer" />
+      </div>
 
-      <button
-        className="tb-btn"
-        onClick={() => useStore.getState().setTheme(theme === 'dark' ? 'light' : 'dark')}
-        title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-        style={{ fontSize: 15 }}
-      >
-        {theme === 'dark' ? '☀️' : '🌙'}
-      </button>
-
-      <button
-        className="tb-primary"
-        onClick={() => setView(view === '2d' ? '3d' : '2d')}
-        title={view === '2d' ? 'Generate a textured 3D view of the whole property' : 'Back to the 2D editor'}
-      >
-        {view === '2d' ? 'Generate 3D ✦' : '← Back to 2D editor'}
-      </button>
+      <div className="tb-right">
+        <button
+          className="tb-btn"
+          onClick={() => useStore.getState().setTheme(theme === 'dark' ? 'light' : 'dark')}
+          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          style={{ fontSize: 15 }}
+        >
+          {theme === 'dark' ? '☀️' : '🌙'}
+        </button>
+        <button
+          className="tb-primary"
+          onClick={() => setView(view === '2d' ? '3d' : '2d')}
+          title={view === '2d' ? 'Generate a textured 3D view of the whole property' : 'Back to the 2D editor'}
+        >
+          {view === '2d' ? 'Generate 3D ✦' : '← Back to 2D editor'}
+        </button>
+      </div>
     </header>
   )
 }

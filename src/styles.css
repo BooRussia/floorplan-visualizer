@@ -114,11 +114,28 @@ body {
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   z-index: 20;
-  overflow-x: auto;
-  overflow-y: hidden;
 }
 
-.toolbar > * {
+/* middle section scrolls; brand and the right controls stay pinned */
+.tb-scroll {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  height: 100%;
+}
+
+.tb-scroll > * {
+  flex-shrink: 0;
+}
+
+.tb-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   flex-shrink: 0;
 }
 
