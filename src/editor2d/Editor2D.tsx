@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { floorFor, useActiveFloor, useStore } from '../model/store'
-import type { FenceType, Floor, FloorMaterial, Pt, Wall } from '../model/types'
+import type { FenceType, Floor, FloorMaterial, Pt, Road, RoadNode, Wall } from '../model/types'
 import {
   add,
   closestOnWall,
@@ -11,6 +11,7 @@ import {
   parseLen,
   perp,
   planBounds,
+  roadPathD,
   rotatePt,
   scale,
   snapAngle,
@@ -35,6 +36,13 @@ export const FENCE_HEIGHTS: Record<FenceType, number> = {
   picket: 48,
   chain: 60,
   rail: 40,
+}
+
+export const ROAD_COLORS: Record<string, { fill: string; dash: string }> = {
+  asphalt: { fill: '#b7b9bd', dash: '#f6f6f4' },
+  concrete: { fill: '#dddddb', dash: '#b9b9b5' },
+  gravel: { fill: '#d9d5cb', dash: '#b9b3a5' },
+  pavers: { fill: '#ddd2be', dash: '#bfb29a' },
 }
 
 export const PAINT_COLORS: Record<FloorMaterial, string> = {
@@ -94,6 +102,9 @@ type Drag =
   | { mode: 'guide-move'; id: string }
   | { mode: 'paint-move'; id: string }
   | { mode: 'building-move'; id: string; offset: Pt }
+  | { mode: 'road-move'; id: string; startWorld: Pt; origNodes: RoadNode[] }
+  | { mode: 'road-node'; id: string; index: number }
+  | { mode: 'road-handle'; id: string; index: number; sign: 1 | -1 }
 
 type FloatInput =
   | { kind: 'wall-len'; wallId: string }
@@ -139,6 +150,14 @@ export default function Editor2D() {
   draftRef.current = draft
   const [hoverWorld, setHoverWorld] = useState<Pt | null>(null)
   const [openingGhost, setOpeningGhost] = useState<{ wallId: string; t: number } | null>(null)
+  const [roadDraft, setRoadDraft] = useState<{ nodes: RoadNode[]; cur: Pt | null } | null>(null)
+  const roadDraftRef = useRef(roadDraft)
+  roadDraftRef.current = roadDraft
+  const penDragRef = useRef(false)
+  const roadStyleRef = useRef<{ width: number; material: Road['material'] }>({
+    width: 144,
+    material: 'asphalt',
+  })
   const [floatInput, setFloatInput] = useState<FloatInput | null>(null)
   const [floatValue, setFloatValue] = useState('')
   const [spaceDown, setSpaceDown] = useState(false)
@@ -149,6 +168,7 @@ export default function Editor2D() {
   useEffect(() => {
     setSnapMark(null)
     setOpeningGhost(null)
+    if (tool.type !== 'road') setRoadDraft(null)
   }, [tool])
 
   // ---------- sizing ----------
@@ -436,6 +456,36 @@ export default function Editor2D() {
             st.updateBuilding(d.id, { x: p.x, y: p.y })
             break
           }
+          case 'road-move': {
+            const delta = snapPoint(sub(world, d.startWorld), 1)
+            st.updateRoad(d.id, {
+              nodes: d.origNodes.map((n) => ({ ...n, x: n.x + delta.x, y: n.y + delta.y })),
+            })
+            break
+          }
+          case 'road-node': {
+            const road = fl().roads.find((r) => r.id === d.id)
+            if (!road) break
+            const p = snapPoint(world, 1)
+            st.updateRoad(d.id, {
+              nodes: road.nodes.map((n, i) => (i === d.index ? { ...n, x: p.x, y: p.y } : n)),
+            })
+            break
+          }
+          case 'road-handle': {
+            const road = fl().roads.find((r) => r.id === d.id)
+            if (!road) break
+            const n = road.nodes[d.index]
+            if (!n) break
+            let h = { x: world.x - n.x, y: world.y - n.y }
+            if (d.sign < 0) h = { x: -h.x, y: -h.y }
+            st.updateRoad(d.id, {
+              nodes: road.nodes.map((nn, i) =>
+                i === d.index ? { ...nn, hx: snapTo(h.x, 0.5), hy: snapTo(h.y, 0.5) } : nn
+              ),
+            })
+            break
+          }
         }
       }
       const onUp = () => {
@@ -484,6 +534,22 @@ export default function Editor2D() {
     [setDraft]
   )
 
+  // ---------- road pen tool ----------
+  const finishRoad = useCallback(() => {
+    const d = roadDraftRef.current
+    setRoadDraft(null)
+    penDragRef.current = false
+    if (!d || d.nodes.length < 2) return
+    const st = useStore.getState()
+    const id = st.addRoad({
+      nodes: d.nodes,
+      width: roadStyleRef.current.width,
+      material: roadStyleRef.current.material,
+    })
+    st.setTool({ type: 'select' })
+    st.select({ kind: 'road', id })
+  }, [])
+
   // ---------- background pointer handlers ----------
   const onSvgPointerDown = useCallback(
     (e: React.PointerEvent) => {
@@ -518,6 +584,17 @@ export default function Editor2D() {
       if (tool.type === 'paint') {
         const p = snapPoint(world, 1)
         st.addPaint(p.x, p.y, tool.material)
+        return
+      }
+
+      if (tool.type === 'road') {
+        e.preventDefault()
+        const { p } = snapForDraw(world, null, e.altKey)
+        setRoadDraft((d) => ({
+          nodes: [...(d?.nodes ?? []), { x: p.x, y: p.y, hx: 0, hy: 0 }],
+          cur: p,
+        }))
+        penDragRef.current = true
         return
       }
 
@@ -584,6 +661,23 @@ export default function Editor2D() {
       const world = worldFromClient(e.clientX, e.clientY)
       setHoverWorld(world)
 
+      if (tool.type === 'road' && roadDraftRef.current) {
+        const d = roadDraftRef.current
+        if (penDragRef.current && d.nodes.length) {
+          const last = d.nodes[d.nodes.length - 1]
+          const h = { x: world.x - last.x, y: world.y - last.y }
+          setRoadDraft({
+            nodes: [...d.nodes.slice(0, -1), { ...last, hx: snapTo(h.x, 0.5), hy: snapTo(h.y, 0.5) }],
+            cur: world,
+          })
+        } else {
+          const { p, mark } = snapForDraw(world, null, e.altKey)
+          setSnapMark(mark)
+          setRoadDraft({ ...d, cur: p })
+        }
+        return
+      }
+
       const drawing = tool.type === 'wall' || tool.type === 'fence'
       if (drawing && draftRef.current) {
         const d = draftRef.current
@@ -615,7 +709,8 @@ export default function Editor2D() {
 
   const onSvgDoubleClick = useCallback(() => {
     if (draftRef.current) setDraft(null)
-  }, [setDraft])
+    if (roadDraftRef.current) finishRoad()
+  }, [setDraft, finishRoad])
 
   // ---------- wheel: scroll = pan, ctrl/cmd = zoom ----------
   useEffect(() => {
@@ -654,7 +749,10 @@ export default function Editor2D() {
         return
       }
       if (e.key === 'Escape') {
-        if (draftRef.current) setDraft(null)
+        if (roadDraftRef.current) {
+          setRoadDraft(null)
+          penDragRef.current = false
+        } else if (draftRef.current) setDraft(null)
         else if (floatInput) setFloatInput(null)
         else if (st.tool.type !== 'select') st.setTool({ type: 'select' })
         else st.select(null)
@@ -682,9 +780,15 @@ export default function Editor2D() {
         st.deleteSelected()
         return
       }
-      if (e.key === 'Enter' && draftRef.current) {
-        setDraft(null)
-        return
+      if (e.key === 'Enter') {
+        if (roadDraftRef.current) {
+          finishRoad()
+          return
+        }
+        if (draftRef.current) {
+          setDraft(null)
+          return
+        }
       }
       switch (e.key.toLowerCase()) {
         case 'v':
@@ -757,7 +861,7 @@ export default function Editor2D() {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
     }
-  }, [floatInput, setDraft])
+  }, [floatInput, setDraft, finishRoad])
 
   // ---------- draw-length input ----------
   const applyDrawValue = useCallback(() => {
@@ -884,6 +988,9 @@ export default function Editor2D() {
         viewBox={viewBox}
         onPointerDown={onSvgPointerDown}
         onPointerMove={onSvgPointerMove}
+        onPointerUp={() => {
+          penDragRef.current = false
+        }}
         onDoubleClick={onSvgDoubleClick}
       >
         <defs>
@@ -946,6 +1053,199 @@ export default function Editor2D() {
               ))}
           </g>
         )}
+
+        {/* roads */}
+        {floor.roads.map((r) => {
+          const colors = ROAD_COLORS[r.material] ?? ROAD_COLORS.asphalt
+          const selectedR = selection?.kind === 'road' && selection.id === r.id
+          const pathD = roadPathD(r.nodes)
+          const grip = 24 / view.ppi
+          return (
+            <g key={r.id}>
+              <path
+                d={pathD}
+                stroke="#a3a39f"
+                strokeWidth={r.width + 3}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill="none"
+              />
+              <path
+                d={pathD}
+                stroke={colors.fill}
+                strokeWidth={r.width}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill="none"
+              />
+              <path
+                d={pathD}
+                stroke={colors.dash}
+                strokeWidth={1.4}
+                strokeDasharray="14 10"
+                vectorEffect="non-scaling-stroke"
+                fill="none"
+                opacity={0.9}
+              />
+              {selectedR && (
+                <path
+                  d={pathD}
+                  stroke={ACCENT}
+                  strokeWidth={1.4}
+                  vectorEffect="non-scaling-stroke"
+                  strokeDasharray="6 5"
+                  fill="none"
+                />
+              )}
+              <path
+                d={pathD}
+                stroke="transparent"
+                strokeWidth={Math.max(r.width, 20 / view.ppi)}
+                strokeLinecap="round"
+                fill="none"
+                style={{ cursor: tool.type === 'select' ? 'move' : undefined }}
+                onPointerDown={(e) => {
+                  if (tool.type !== 'select' || spaceDown) return
+                  const world = worldFromClient(e.clientX, e.clientY)
+                  useStore.getState().select({ kind: 'road', id: r.id })
+                  beginDrag(
+                    {
+                      mode: 'road-move',
+                      id: r.id,
+                      startWorld: world,
+                      origNodes: r.nodes.map((n) => ({ ...n })),
+                    },
+                    e
+                  )
+                }}
+              />
+              {selectedR &&
+                r.nodes.map((n, i) => {
+                  // handle grip positions: real handles, or tangent-aligned grips for corners
+                  let hx = n.hx
+                  let hy = n.hy
+                  if (Math.hypot(hx, hy) < 0.5) {
+                    const ref = r.nodes[i + 1] ?? r.nodes[i - 1] ?? { x: n.x + 1, y: n.y }
+                    const dir = norm({ x: ref.x - n.x, y: ref.y - n.y })
+                    hx = dir.x * grip
+                    hy = dir.y * grip
+                  }
+                  return (
+                    <g key={i}>
+                      <line
+                        x1={n.x - hx}
+                        y1={n.y - hy}
+                        x2={n.x + hx}
+                        y2={n.y + hy}
+                        stroke={ACCENT}
+                        strokeWidth={1}
+                        vectorEffect="non-scaling-stroke"
+                        opacity={0.8}
+                      />
+                      {([1, -1] as const).map((sign) => (
+                        <circle
+                          key={sign}
+                          cx={n.x + sign * hx}
+                          cy={n.y + sign * hy}
+                          r={handleSize * 0.42}
+                          fill="#fff"
+                          stroke={ACCENT}
+                          strokeWidth={1.4}
+                          vectorEffect="non-scaling-stroke"
+                          style={{ cursor: 'grab' }}
+                          onPointerDown={(e) =>
+                            beginDrag({ mode: 'road-handle', id: r.id, index: i, sign }, e)
+                          }
+                        />
+                      ))}
+                      <rect
+                        x={n.x - handleSize / 2}
+                        y={n.y - handleSize / 2}
+                        width={handleSize}
+                        height={handleSize}
+                        fill={ACCENT}
+                        stroke="#fff"
+                        strokeWidth={1.4}
+                        vectorEffect="non-scaling-stroke"
+                        style={{ cursor: 'move' }}
+                        onPointerDown={(e) => beginDrag({ mode: 'road-node', id: r.id, index: i }, e)}
+                        onDoubleClick={(e) => {
+                          e.stopPropagation()
+                          if (r.nodes.length > 2) {
+                            const st = useStore.getState()
+                            st.checkpoint()
+                            st.updateRoad(r.id, { nodes: r.nodes.filter((_, j) => j !== i) })
+                          }
+                        }}
+                      />
+                    </g>
+                  )
+                })}
+            </g>
+          )
+        })}
+
+        {/* road draft preview */}
+        {roadDraft &&
+          roadDraft.nodes.length > 0 &&
+          (() => {
+            const previewNodes =
+              roadDraft.cur && !penDragRef.current
+                ? [...roadDraft.nodes, { x: roadDraft.cur.x, y: roadDraft.cur.y, hx: 0, hy: 0 }]
+                : roadDraft.nodes
+            const pathD = roadPathD(previewNodes)
+            const colors = ROAD_COLORS[roadStyleRef.current.material] ?? ROAD_COLORS.asphalt
+            const last = roadDraft.nodes[roadDraft.nodes.length - 1]
+            return (
+              <g pointerEvents="none">
+                <path
+                  d={pathD}
+                  stroke={colors.fill}
+                  strokeWidth={roadStyleRef.current.width}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  fill="none"
+                  opacity={0.45}
+                />
+                <path
+                  d={pathD}
+                  stroke={ACCENT}
+                  strokeWidth={1.4}
+                  vectorEffect="non-scaling-stroke"
+                  fill="none"
+                  strokeDasharray="6 5"
+                />
+                {roadDraft.nodes.map((n, i) => (
+                  <rect
+                    key={i}
+                    x={n.x - handleSize / 2}
+                    y={n.y - handleSize / 2}
+                    width={handleSize}
+                    height={handleSize}
+                    fill={ACCENT}
+                    stroke="#fff"
+                    strokeWidth={1.2}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ))}
+                {(Math.hypot(last.hx, last.hy) > 0.5 || penDragRef.current) && (
+                  <>
+                    <line
+                      x1={last.x - last.hx}
+                      y1={last.y - last.hy}
+                      x2={last.x + last.hx}
+                      y2={last.y + last.hy}
+                      stroke={ACCENT}
+                      strokeWidth={1}
+                      vectorEffect="non-scaling-stroke"
+                    />
+                    <circle cx={last.x + last.hx} cy={last.y + last.hy} r={handleSize * 0.4} fill="#fff" stroke={ACCENT} strokeWidth={1.4} vectorEffect="non-scaling-stroke" />
+                    <circle cx={last.x - last.hx} cy={last.y - last.hy} r={handleSize * 0.4} fill="#fff" stroke={ACCENT} strokeWidth={1.4} vectorEffect="non-scaling-stroke" />
+                  </>
+                )}
+              </g>
+            )
+          })()}
 
         {/* furniture */}
         {sortedFurniture.map((f) => (
@@ -1538,6 +1838,13 @@ export default function Editor2D() {
         />
       )}
 
+      {/* road finish button */}
+      {roadDraft && roadDraft.nodes.length >= 2 && (
+        <button className="road-done" onClick={finishRoad}>
+          ✓ Finish road
+        </button>
+      )}
+
       {/* zoom controls */}
       <div className="zoom-controls">
         <button title="Zoom in" onClick={() => setView((v) => ({ ...v, ppi: Math.min(12, v.ppi * 1.3) }))}>
@@ -1567,6 +1874,10 @@ export default function Editor2D() {
                 ? 'Click to add a label'
                 : tool.type === 'measure'
                   ? 'Click to drop a reference mark · marks show distances to nearby walls and snap like endpoints'
+                  : tool.type === 'road'
+                    ? roadDraft
+                      ? 'Click to add points · click-drag for curves · Enter or ✓ to generate the road · Esc cancels'
+                      : 'Pen tool: click to place the road centerline · click-drag a point to curve it'
                   : tool.type === 'paint'
                     ? 'Click inside a room to set its floor material'
                     : isPlot

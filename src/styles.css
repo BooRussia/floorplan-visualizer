@@ -509,6 +509,28 @@ body {
   outline: none;
 }
 
+.road-done {
+  position: absolute;
+  left: 50%;
+  bottom: 60px;
+  transform: translateX(-50%);
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 18px;
+  border-radius: 99px;
+  cursor: pointer;
+  box-shadow: var(--shadow-2);
+  z-index: 15;
+}
+
+.road-done:hover {
+  background: #1d4fd7;
+}
+
 .zoom-controls {
   position: absolute;
   right: var(--space-4);

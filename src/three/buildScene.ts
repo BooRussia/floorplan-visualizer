@@ -7,10 +7,11 @@ import {
   type Opening,
   type Project,
   type Pt,
+  type Road,
   type Wall,
 } from '../model/types'
-import { dist, toLocal, wallPointAt, wallSamples } from '../model/geometry'
-import { getGrassTexture, MAT, roomFloorMaterial } from './materials'
+import { dist, sampleRoad, toLocal, wallPointAt, wallSamples } from '../model/geometry'
+import { getGrassTexture, MAT, roomFloorMaterial, surfaceMaterial } from './materials'
 import { buildFurniture } from './furniture3d'
 
 const FLOOR_Y = 0.12
@@ -555,6 +556,61 @@ function buildFloorAndSlab(group: THREE.Group, floor: Floor, level: number, hole
   }
 }
 
+// ---------- roads ----------
+
+/** Flat ribbon mesh along the road's bezier centerline, width/2 to each side. */
+function buildRoad(group: THREE.Group, road: Road) {
+  const pts = sampleRoad(road.nodes, 10)
+  if (pts.length < 2) return
+  const hw = road.width / 2
+  const Y = 0.5
+
+  const positions: number[] = []
+  const uvs: number[] = []
+  const indices: number[] = []
+  let arc = 0
+  for (let i = 0; i < pts.length; i++) {
+    const prev = pts[Math.max(0, i - 1)]
+    const next = pts[Math.min(pts.length - 1, i + 1)]
+    if (i > 0) arc += dist(prev, pts[i])
+    const tx = next.x - prev.x
+    const ty = next.y - prev.y
+    const tl = Math.hypot(tx, ty) || 1
+    const nx = -ty / tl
+    const ny = tx / tl
+    positions.push(pts[i].x + nx * hw, Y, pts[i].y + ny * hw)
+    positions.push(pts[i].x - nx * hw, Y, pts[i].y - ny * hw)
+    const s = 1 / 96
+    uvs.push(0, arc * s, road.width * s, arc * s)
+    if (i > 0) {
+      const b = i * 2
+      indices.push(b - 2, b, b - 1, b, b + 1, b - 1)
+    }
+  }
+  const geo = new THREE.BufferGeometry()
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
+  geo.setIndex(indices)
+  geo.computeVertexNormals()
+  const mat = surfaceMaterial(`surface-${road.material}`)
+  const m = new THREE.Mesh(geo, mat)
+  m.receiveShadow = true
+  group.add(m)
+
+  // dashed center line for asphalt roads wide enough to have lanes
+  if (road.material === 'asphalt' && road.width >= 144) {
+    for (let i = 4; i < pts.length - 4; i += 10) {
+      const a = pts[i]
+      const b = pts[Math.min(pts.length - 1, i + 3)]
+      const ang = Math.atan2(b.y - a.y, b.x - a.x)
+      const dash = mesh(new THREE.BoxGeometry(dist(a, b), 0.3, 4), MAT.white, false)
+      dash.position.set((a.x + b.x) / 2, Y + 0.2, (a.y + b.y) / 2)
+      dash.rotation.y = -ang
+      group.add(dash)
+    }
+  }
+}
+
 // ---------- main ----------
 
 function buildBuilding(
@@ -614,7 +670,8 @@ export function buildProject(project: Project): BuiltProject {
   grass.position.set(project.plotW / 2, -3, project.plotD / 2)
   group.add(grass)
 
-  // site layer: fences + landscape/surfaces
+  // site layer: roads under everything, then fences + landscape/surfaces
+  for (const r of project.site.roads) buildRoad(group, r)
   for (const w of project.site.walls) {
     if (w.fence) buildFence(group, w)
     else buildWall(group, w, project.site.openings)

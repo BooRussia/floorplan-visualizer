@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { stairSpecs, useActiveFloor, useStore } from '../model/store'
 import { catalogItem } from '../model/catalog'
-import { dist, fmtLenShort, norm, parseLen, scale, sub, add } from '../model/geometry'
+import { dist, fmtLenShort, norm, parseLen, roadLength, scale, sub, add } from '../model/geometry'
 import {
   MAX_BUILDINGS,
   MAX_FLOORS,
@@ -10,6 +10,7 @@ import {
   type FenceType,
   type FloorMaterial,
   type OpeningType,
+  type Road,
 } from '../model/types'
 
 const FENCE_LABELS: Record<FenceType, string> = {
@@ -189,6 +190,71 @@ export default function PropertiesPanel() {
             </button>
           )}
           <p className="props-tip">Drag the building on the plot to move it. Double-click it to edit floors.</p>
+        </div>
+      </aside>
+    )
+  }
+
+  if (selection?.kind === 'road') {
+    const r = floor.roads.find((x) => x.id === selection.id)
+    if (!r) return null
+    return (
+      <aside className="props">
+        <div className="props-header">Road</div>
+        <div className="props-body">
+          <label className="prop-field">
+            <span>Material</span>
+            <select
+              value={r.material}
+              onChange={(e) => {
+                st.checkpoint()
+                st.updateRoad(r.id, { material: e.target.value as Road['material'] })
+              }}
+            >
+              <option value="asphalt">Asphalt</option>
+              <option value="concrete">Concrete</option>
+              <option value="gravel">Gravel</option>
+              <option value="pavers">Pavers</option>
+            </select>
+          </label>
+          <LenInput
+            label="Width"
+            value={r.width}
+            onCommit={(v) => {
+              st.checkpoint()
+              st.updateRoad(r.id, { width: Math.min(600, Math.max(24, v)) })
+            }}
+          />
+          <div className="prop-row">
+            {[96, 120, 144, 192, 240].map((w) => (
+              <button
+                key={w}
+                className="mini-btn"
+                onClick={() => {
+                  st.checkpoint()
+                  st.updateRoad(r.id, { width: w })
+                }}
+              >
+                {w / 12}'
+              </button>
+            ))}
+          </div>
+          <div className="props-stat">
+            <span>Length (centerline)</span>
+            <b>{fmtLenShort(roadLength(r.nodes))}</b>
+          </div>
+          <div className="props-stat">
+            <span>Points</span>
+            <b>{r.nodes.length}</b>
+          </div>
+          <p className="props-tip">
+            Drag the square points to move them and the round grips to bend the curve —
+            the road stays equal width either side of the centerline. Double-click a
+            point to remove it.
+          </p>
+          <button className="danger-btn" onClick={() => st.deleteSelected()}>
+            Delete road
+          </button>
         </div>
       </aside>
     )

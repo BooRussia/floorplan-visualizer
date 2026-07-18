@@ -1,4 +1,4 @@
-import type { Pt, Wall } from './types'
+import type { Pt, RoadNode, Wall } from './types'
 
 // ---------- vector helpers ----------
 
@@ -163,6 +163,60 @@ export function rotatePt(p: Pt, deg: number): Pt {
 /** World point -> furniture local coords */
 export function toLocal(p: Pt, cx: number, cy: number, rotDeg: number): Pt {
   return rotatePt({ x: p.x - cx, y: p.y - cy }, -rotDeg)
+}
+
+// ---------- roads (pen-tool bezier centerlines) ----------
+// Each pair of consecutive nodes forms a cubic bezier:
+//   P0 = node[i], C1 = P0 + h[i], C2 = P1 - h[i+1], P3 = node[i+1]
+// Handles are symmetric (Photoshop smooth anchors); h = (0,0) makes a corner.
+
+/** SVG path for a road centerline. */
+export function roadPathD(nodes: RoadNode[]): string {
+  if (!nodes.length) return ''
+  let d = `M ${nodes[0].x} ${nodes[0].y}`
+  for (let i = 0; i < nodes.length - 1; i++) {
+    const a = nodes[i]
+    const b = nodes[i + 1]
+    d += ` C ${a.x + a.hx} ${a.y + a.hy} ${b.x - b.hx} ${b.y - b.hy} ${b.x} ${b.y}`
+  }
+  return d
+}
+
+function cubicAt(a: RoadNode, b: RoadNode, t: number): Pt {
+  const p0 = { x: a.x, y: a.y }
+  const p1 = { x: a.x + a.hx, y: a.y + a.hy }
+  const p2 = { x: b.x - b.hx, y: b.y - b.hy }
+  const p3 = { x: b.x, y: b.y }
+  const u = 1 - t
+  return {
+    x: u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x,
+    y: u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y,
+  }
+}
+
+/** Sample the centerline into a dense polyline (~`step` inch spacing). */
+export function sampleRoad(nodes: RoadNode[], step = 12): Pt[] {
+  if (nodes.length < 2) return nodes.map((n) => ({ x: n.x, y: n.y }))
+  const pts: Pt[] = [{ x: nodes[0].x, y: nodes[0].y }]
+  for (let i = 0; i < nodes.length - 1; i++) {
+    const a = nodes[i]
+    const b = nodes[i + 1]
+    // estimate segment length from control polygon
+    const est =
+      Math.hypot(a.hx, a.hy) +
+      Math.hypot(b.x - b.hx - (a.x + a.hx), b.y - b.hy - (a.y + a.hy)) +
+      Math.hypot(b.hx, b.hy)
+    const n = Math.max(4, Math.ceil((est || dist(a, b)) / step))
+    for (let k = 1; k <= n; k++) pts.push(cubicAt(a, b, k / n))
+  }
+  return pts
+}
+
+export function roadLength(nodes: RoadNode[]): number {
+  const pts = sampleRoad(nodes, 12)
+  let l = 0
+  for (let i = 0; i < pts.length - 1; i++) l += dist(pts[i], pts[i + 1])
+  return l
 }
 
 // ---------- guide distance rays ----------

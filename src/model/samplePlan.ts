@@ -13,6 +13,18 @@ export const SAMPLE_PROJECT: Project = {
     labels: [{ id: 'sl1', x: 1600, y: 1500, text: 'Driveway', size: 14 }],
     guides: [],
     paints: [],
+    roads: [
+      {
+        id: 'road1',
+        width: 144,
+        material: 'concrete',
+        nodes: [
+          { x: 1620, y: 1752, hx: 0, hy: -280 },
+          { x: 1540, y: 1180, hx: -20, hy: -170 },
+          { x: 1430, y: 1000, hx: -70, hy: 60 },
+        ],
+      },
+    ],
     walls: [
       { id: 'fn1', a: { x: 48, y: 48 }, b: { x: 2352, y: 48 }, thickness: 3, bulge: 0, height: 72, fence: 'privacy' },
       { id: 'fn2', a: { x: 48, y: 48 }, b: { x: 48, y: 1752 }, thickness: 3, bulge: 0, height: 72, fence: 'privacy' },
@@ -20,7 +32,6 @@ export const SAMPLE_PROJECT: Project = {
       { id: 'fn4', a: { x: 48, y: 1752 }, b: { x: 1450, y: 1752 }, thickness: 3, bulge: 0, height: 40, fence: 'rail' },
     ],
     furniture: [
-      { id: 'sf1', kind: 'surface-concrete', x: 1600, y: 1290, rot: 0, w: 144, d: 1020, h: 1 },
       { id: 'sf2', kind: 'surface-pavers', x: 1470, y: 1030, rot: 25, w: 48, d: 260, h: 1 },
       { id: 'sf3', kind: 'surface-mulch', x: 1000, y: 1010, rot: 0, w: 520, d: 70, h: 1 },
       { id: 'sf4', kind: 'shrub', x: 820, y: 1010, rot: 0, w: 30, d: 30, h: 30 },
@@ -124,6 +135,7 @@ export const SAMPLE_PROJECT: Project = {
         { id: 'p2', x: 108, y: 90, material: 'carpet' },
         { id: 'p3', x: 324, y: 90, material: 'carpet' },
       ],
+      roads: [],
         },
       ],
     },

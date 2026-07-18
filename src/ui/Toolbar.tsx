@@ -218,6 +218,21 @@ export default function Toolbar() {
               Select
             </ToolButton>
 
+            {isPlot && (
+              <ToolButton
+                active={tool.type === 'road'}
+                onClick={() => setTool({ type: 'road' })}
+                title="Draw a road with the pen tool: click points, drag for curves"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M2 13C5 13 4 3 8 3s3 10 6 10" stroke="currentColor" strokeWidth="1.6" fill="none" />
+                  <circle cx="8" cy="3" r="1.6" fill="currentColor" />
+                  <circle cx="2" cy="13" r="1.6" fill="currentColor" />
+                  <circle cx="14" cy="13" r="1.6" fill="currentColor" />
+                </svg>
+                Road
+              </ToolButton>
+            )}
             {isPlot ? (
               <DropTool
                 active={tool.type === 'fence'}

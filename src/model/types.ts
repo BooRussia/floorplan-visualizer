@@ -72,6 +72,24 @@ export interface Guide {
 
 export type FloorMaterial = 'wood' | 'tile' | 'carpet' | 'concrete' | 'stone'
 
+export type RoadMaterial = 'asphalt' | 'concrete' | 'gravel' | 'pavers'
+
+/** Pen-tool anchor: position + symmetric bezier handle vector (0,0 = corner point). */
+export interface RoadNode {
+  x: number
+  y: number
+  hx: number
+  hy: number
+}
+
+/** A road/path drawn as a bezier centerline, rendered `width` wide either side. */
+export interface Road {
+  id: string
+  nodes: RoadNode[]
+  width: number // inches
+  material: RoadMaterial
+}
+
 /** Paint-bucket seed: the room containing this point gets the material. */
 export interface FloorPaint {
   id: string
@@ -91,6 +109,7 @@ export interface Floor {
   labels: Label[]
   guides: Guide[]
   paints: FloorPaint[]
+  roads: Road[]
 }
 
 /** A building placed on the plot. Floor geometry is in building-local inches. */
@@ -128,6 +147,7 @@ export type Selection =
   | { kind: 'label'; id: string }
   | { kind: 'guide'; id: string }
   | { kind: 'paint'; id: string }
+  | { kind: 'road'; id: string }
   | { kind: 'building'; id: string }
   | null
 
@@ -141,6 +161,7 @@ export type Tool =
   | { type: 'label' }
   | { type: 'measure' }
   | { type: 'paint'; material: FloorMaterial }
+  | { type: 'road' }
 
 export const emptyFloor = (n: number): Floor => ({
   id: uid('floor'),
@@ -152,6 +173,7 @@ export const emptyFloor = (n: number): Floor => ({
   labels: [],
   guides: [],
   paints: [],
+  roads: [],
 })
 
 export const emptyBuilding = (n: number, x = 0, y = 0): Building => ({
@@ -180,6 +202,7 @@ const migrateFloor = (f: any, i: number): Floor => ({
   labels: f.labels ?? [],
   guides: f.guides ?? [],
   paints: f.paints ?? [],
+  roads: f.roads ?? [],
 })
 
 /** Accepts the current project shape plus both legacy shapes (floors-only, single-floor). */

@@ -13,6 +13,12 @@ plot you can:
 
 - **Place buildings** (up to 8). Drag to move, rotate from the panel, and
   **double-click a building to dive into its floor plans** — the breadcrumb takes you back.
+- **Draw roads with a pen tool**: click to place centerline points, click-drag a point to
+  pull out curve handles (Photoshop-style, symmetric). Hit Enter / ✓ Finish and the road
+  generates at equal width either side of the centerline — then pick its width (presets
+  8'–20' or any exact value) and material (asphalt with dashed center line, concrete,
+  gravel, pavers). Selected roads expose their points and curvature grips for editing;
+  double-click a point to remove it.
 - **Draw fences** with the fence tool (`W` on the plot): privacy, picket, chain-link, or
   split rail — each renders properly in 3D as posts, rails and boards.
 - **Drop surfaces** from the site library: concrete, asphalt (with center line), gravel,

@@ -18,6 +18,7 @@ import {
   type Label,
   type Opening,
   type Project,
+  type Road,
   type Selection,
   type Tool,
   type Wall,
@@ -81,6 +82,8 @@ interface StoreState {
   clearGuides: () => void
   addPaint: (x: number, y: number, material: FloorMaterial) => string
   updatePaint: (id: string, patch: Partial<FloorPaint>) => void
+  addRoad: (road: Omit<Road, 'id'>) => string
+  updateRoad: (id: string, patch: Partial<Road>) => void
   deleteSelected: () => void
   duplicateSelected: () => void
   clearProject: () => void
@@ -375,6 +378,17 @@ export const useStore = create<StoreState>((set, get) => {
         ...f,
         paints: f.paints.map((p) => (p.id === id ? { ...p, ...patch } : p)),
       })),
+    addRoad: (road) => {
+      const id = uid('road')
+      get().checkpoint()
+      onFloor((f) => ({ ...f, roads: [...f.roads, { ...road, id }] }))
+      return id
+    },
+    updateRoad: (id, patch) =>
+      onFloor((f) => ({
+        ...f,
+        roads: f.roads.map((r) => (r.id === id ? { ...r, ...patch } : r)),
+      })),
 
     deleteSelected: () => {
       const { selection, checkpoint } = get()
@@ -399,6 +413,8 @@ export const useStore = create<StoreState>((set, get) => {
           p.guides = p.guides.filter((g) => g.id !== selection.id)
         } else if (selection.kind === 'paint') {
           p.paints = p.paints.filter((g) => g.id !== selection.id)
+        } else if (selection.kind === 'road') {
+          p.roads = p.roads.filter((r) => r.id !== selection.id)
         }
         return p
       })
