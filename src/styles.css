@@ -62,6 +62,12 @@ body {
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   z-index: 20;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.toolbar > * {
+  flex-shrink: 0;
 }
 
 .tb-brand {
@@ -78,6 +84,44 @@ body {
 .tb-logo {
   color: var(--accent);
   font-size: 17px;
+}
+
+.tb-floors {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.tb-floor {
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-2);
+  width: 26px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.tb-floor:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.tb-floor.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.tb-floor.add {
+  color: var(--text-3);
+  font-size: 14px;
 }
 
 .tb-group {
@@ -494,4 +538,43 @@ body {
 
 .scene3d-mount canvas {
   display: block;
+}
+
+.floor-vis {
+  position: absolute;
+  top: var(--space-4);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+  z-index: 10;
+}
+
+.floor-vis button {
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-2);
+  min-width: 32px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.floor-vis button:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.floor-vis button.active {
+  background: var(--accent);
+  color: #fff;
 }

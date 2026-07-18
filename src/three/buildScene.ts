@@ -1,6 +1,6 @@
 import * as THREE from 'three'
-import type { Opening, Plan, Pt, Wall } from '../model/types'
-import { dist, wallSamples } from '../model/geometry'
+import { STORY_GAP, type Floor, type Furniture, type Opening, type Plan, type Pt, type Wall } from '../model/types'
+import { dist, toLocal, wallSamples } from '../model/geometry'
 import { MAT } from './materials'
 import { buildFurniture } from './furniture3d'
 
@@ -10,9 +10,16 @@ const DOOR_HEAD = 80
 const WINDOW_SILL = 30
 const WINDOW_HEAD = 78
 
+export interface BuiltFurniture {
+  group: THREE.Group
+  floorIndex: number
+  elevation: number
+}
+
 export interface BuiltPlan {
   group: THREE.Group
-  furniture: Map<string, THREE.Group>
+  floorGroups: THREE.Group[]
+  furniture: Map<string, BuiltFurniture>
   center: THREE.Vector3
   radius: number
 }
@@ -85,7 +92,6 @@ function buildDoorLeaves(group: THREE.Group, w: Wall, o: Opening, s0: number, s1
   } else if (o.type === 'bifold') {
     const q = width / 4
     const fold = side * 55
-    // two V-folded pairs
     const a0 = alongWall(w, s0)
     const p0 = new THREE.Group()
     p0.position.set(a0.x, 0, a0.y)
@@ -117,7 +123,6 @@ function buildDoorLeaves(group: THREE.Group, w: Wall, o: Opening, s0: number, s1
     p1.add(p1b)
     group.add(p1)
   } else if (o.type === 'sliding') {
-    // two glass panels in the wall plane
     const mid = alongWall(w, (s0 + s1) / 2)
     const holder = new THREE.Group()
     holder.position.set(mid.x, 0, mid.y)
@@ -153,7 +158,6 @@ function buildWindow(group: THREE.Group, w: Wall, o: Opening, s0: number, s1: nu
   const a = alongWall(w, s0)
   const b = alongWall(w, s1)
   const head = Math.min(WINDOW_HEAD, w.height - 6)
-  // sill + frame
   wallBox(group, a, b, WINDOW_SILL - 1.2, WINDOW_SILL, w.thickness + 2, MAT.frame)
   const mid = alongWall(w, (s0 + s1) / 2)
   const ang = Math.atan2(w.b.y - w.a.y, w.b.x - w.a.x)
@@ -164,7 +168,6 @@ function buildWindow(group: THREE.Group, w: Wall, o: Opening, s0: number, s1: nu
   const gl = mesh(new THREE.BoxGeometry(width - 1, head - WINDOW_SILL, 0.6), MAT.glass, false)
   gl.position.set(0, (head + WINDOW_SILL) / 2, 0)
   holder.add(gl)
-  // mullion
   const mull = mesh(new THREE.BoxGeometry(1.2, head - WINDOW_SILL, 1.4), MAT.frame)
   mull.position.set(0, (head + WINDOW_SILL) / 2, 0)
   holder.add(mull)
@@ -182,7 +185,6 @@ function buildWall(group: THREE.Group, w: Wall, openings: Opening[]) {
   const ext = th / 2 // match the 2D square line caps so corners close
 
   if (w.bulge) {
-    // curved: chain of overlapping segments
     const pts = wallSamples(w, 4)
     for (let i = 0; i < pts.length - 1; i++) {
       wallBox(group, pts[i], pts[i + 1], 0, H, th, MAT.wall, 0.6, 0.6)
@@ -203,23 +205,11 @@ function buildWall(group: THREE.Group, w: Wall, openings: Opening[]) {
   let cursor = 0
   for (const { o, s0, s1 } of ops) {
     if (s0 > cursor) {
-      wallBox(
-        group,
-        alongWall(w, cursor),
-        alongWall(w, s0),
-        0,
-        H,
-        th,
-        MAT.wall,
-        cursor === 0 ? ext : 0,
-        0
-      )
+      wallBox(group, alongWall(w, cursor), alongWall(w, s0), 0, H, th, MAT.wall, cursor === 0 ? ext : 0, 0)
     }
     const head = o.type === 'window' ? Math.min(WINDOW_HEAD, H - 6) : Math.min(DOOR_HEAD, H - 4)
-    // header above the opening
     wallBox(group, alongWall(w, s0), alongWall(w, s1), head, H, th, MAT.wall)
     if (o.type === 'window') {
-      // wall below the sill
       wallBox(group, alongWall(w, s0), alongWall(w, s1), 0, WINDOW_SILL, th, MAT.wall)
       buildWindow(group, w, o, s0, s1)
     } else {
@@ -230,17 +220,31 @@ function buildWall(group: THREE.Group, w: Wall, openings: Opening[]) {
   if (cursor < L) {
     wallBox(group, alongWall(w, cursor), w.b, 0, H, th, MAT.wall, cursor === 0 ? ext : 0, ext)
   }
-  // cap
   wallBox(group, w.a, w.b, H, H + 1, th + 0.4, MAT.wallCap, ext, ext)
 }
 
-// ---------- floor via flood fill ----------
+// ---------- floor surfaces via flood fill ----------
 
-function buildFloorAndSlab(group: THREE.Group, plan: Plan) {
-  const walls = plan.walls
+/** true when p falls inside the footprint of any of the given furniture items */
+function inFootprint(p: Pt, items: Furniture[]): boolean {
+  for (const f of items) {
+    const local = toLocal(p, f.x, f.y, f.rot)
+    if (Math.abs(local.x) <= f.w / 2 && Math.abs(local.y) <= f.d / 2) return true
+  }
+  return false
+}
+
+/**
+ * Wood floor + structural slab for one story.
+ * level 0 gets a ground slab below grade; upper levels get a story-gap band.
+ * `holes` are stairwell footprints from the floor below — skipped in both meshes.
+ */
+function buildFloorAndSlab(group: THREE.Group, floor: Floor, level: number, holes: Furniture[]) {
+  const walls = floor.walls
   const pts: Pt[] = []
   for (const w of walls) pts.push(...wallSamples(w, 12))
-  for (const f of plan.furniture) pts.push({ x: f.x, y: f.y })
+  for (const f of floor.furniture) pts.push({ x: f.x, y: f.y })
+  for (const h of holes) pts.push({ x: h.x, y: h.y })
   if (!pts.length) return
 
   let minX = Infinity,
@@ -259,7 +263,7 @@ function buildFloorAndSlab(group: THREE.Group, plan: Plan) {
   const oy = minY - PAD * CELL
   const W = Math.ceil((maxX - ox + PAD * CELL) / CELL) + 1
   const H = Math.ceil((maxY - oy + PAD * CELL) / CELL) + 1
-  if (W * H > 1_200_000) return // plan too large to rasterize; skip floor
+  if (W * H > 1_200_000) return
 
   const solid = new Uint8Array(W * H)
   const idx = (cx: number, cy: number) => cy * W + cx
@@ -318,11 +322,13 @@ function buildFloorAndSlab(group: THREE.Group, plan: Plan) {
 
   let interiorCount = 0
   for (let i = 0; i < W * H; i++) if (!solid[i] && !outside[i]) interiorCount++
+  const isInterior = (i: number) => (interiorCount > 30 ? !solid[i] && !outside[i] : !solid[i])
 
-  const isInterior = (i: number) =>
-    interiorCount > 30 ? !solid[i] && !outside[i] : !solid[i] // fallback: open plan, floor everywhere in bounds
+  const cellCenter = (cx: number, cy: number): Pt => ({
+    x: ox + cx * CELL + CELL / 2,
+    y: oy + cy * CELL + CELL / 2,
+  })
 
-  // wood floor: merged quads per row-run
   const positions: number[] = []
   const uvs: number[] = []
   const indices: number[] = []
@@ -334,14 +340,15 @@ function buildFloorAndSlab(group: THREE.Group, plan: Plan) {
     indices.push(base, base + 2, base + 1, base, base + 3, base + 2)
   }
 
-  const slabRuns: [number, number, number][] = [] // [row, x0, x1]
+  const slabRuns: [number, number, number][] = []
   for (let cy = 0; cy < H; cy++) {
     let runStart = -1
     let slabStart = -1
     for (let cx = 0; cx <= W; cx++) {
       const i = cx < W ? idx(cx, cy) : -1
-      const interior = cx < W && isInterior(i)
-      const slabby = cx < W && (interior || solid[i])
+      const holed = cx < W && holes.length > 0 && inFootprint(cellCenter(cx, cy), holes)
+      const interior = cx < W && isInterior(i) && !holed
+      const slabby = cx < W && (interior || (solid[i] === 1 && !holed))
       if (interior && runStart < 0) runStart = cx
       if (!interior && runStart >= 0) {
         pushQuad(ox + runStart * CELL, oy + cy * CELL, ox + cx * CELL, oy + (cy + 1) * CELL)
@@ -361,38 +368,49 @@ function buildFloorAndSlab(group: THREE.Group, plan: Plan) {
     geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
     geo.setIndex(indices)
     geo.computeVertexNormals()
-    const floor = mesh(geo, MAT.floor(), false, true)
-    group.add(floor)
+    group.add(mesh(geo, MAT.floor(), false, true))
   }
 
-  // slab platform under floor + walls
-  const slabGroup = new THREE.Group()
+  // structural slab: below grade for the ground floor, story band for upper floors
+  const slabTh = level === 0 ? SLAB_DEPTH : STORY_GAP
   for (const [row, x0, x1] of slabRuns) {
     const wpx = (x1 - x0) * CELL
-    const m = mesh(new THREE.BoxGeometry(wpx, SLAB_DEPTH, CELL), MAT.slab, false, true)
-    m.position.set(ox + x0 * CELL + wpx / 2, -SLAB_DEPTH / 2 + 0.06, oy + row * CELL + CELL / 2)
-    slabGroup.add(m)
+    const m = mesh(new THREE.BoxGeometry(wpx, slabTh, CELL), MAT.slab, level > 0, true)
+    m.position.set(ox + x0 * CELL + wpx / 2, -slabTh / 2 + 0.06, oy + row * CELL + CELL / 2)
+    group.add(m)
   }
-  group.add(slabGroup)
 }
 
 // ---------- main ----------
 
 export function buildPlan(plan: Plan): BuiltPlan {
   const group = new THREE.Group()
-  const furniture = new Map<string, THREE.Group>()
+  const floorGroups: THREE.Group[] = []
+  const furniture = new Map<string, BuiltFurniture>()
 
-  buildFloorAndSlab(group, plan)
-  for (const w of plan.walls) buildWall(group, w, plan.openings)
+  let elevation = 0
+  plan.floors.forEach((floor, k) => {
+    const fg = new THREE.Group()
+    fg.position.y = elevation
 
-  for (const f of plan.furniture) {
-    const g = buildFurniture(f.kind, f.w, f.d, f.h)
-    g.position.set(f.x, FLOOR_Y, f.y)
-    g.rotation.y = -THREE.MathUtils.degToRad(f.rot)
-    g.userData.furnId = f.id
-    furniture.set(f.id, g)
-    group.add(g)
-  }
+    const holes =
+      k > 0 ? plan.floors[k - 1].furniture.filter((f) => f.kind === 'staircase') : []
+    buildFloorAndSlab(fg, floor, k, holes)
+    for (const w of floor.walls) buildWall(fg, w, floor.openings)
+
+    for (const f of floor.furniture) {
+      const g = buildFurniture(f.kind, f.w, f.d, f.h)
+      g.position.set(f.x, FLOOR_Y, f.y)
+      g.rotation.y = -THREE.MathUtils.degToRad(f.rot)
+      g.userData.furnId = f.id
+      furniture.set(f.id, { group: g, floorIndex: k, elevation })
+      fg.add(g)
+    }
+
+    group.add(fg)
+    floorGroups.push(fg)
+    elevation += floor.height + STORY_GAP
+  })
 
   const bbox = new THREE.Box3().setFromObject(group)
   const center = new THREE.Vector3()
@@ -403,7 +421,7 @@ export function buildPlan(plan: Plan): BuiltPlan {
   }
   const radius = Math.max(size.x, size.z, 120) / 2
 
-  return { group, furniture, center, radius }
+  return { group, floorGroups, furniture, center, radius }
 }
 
 export function disposePlan(group: THREE.Group) {

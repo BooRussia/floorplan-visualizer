@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useStore } from '../model/store'
-import type { Furniture, Pt, Wall } from '../model/types'
+import { useActiveFloor, useStore } from '../model/store'
+import type { Floor, Pt, Wall } from '../model/types'
 import {
   add,
   closestOnWall,
   dist,
   fmtLenShort,
+  guideRays,
   norm,
   parseLen,
   perp,
@@ -17,15 +18,16 @@ import {
   snapTo,
   sub,
   toLocal,
+  wallLength,
   wallPointAt,
-  wallSamples,
   wallTangentAt,
 } from '../model/geometry'
+import { catalogItem } from '../model/catalog'
 import { Glyph } from './glyphs'
 import { ACCENT, BG, OpeningGlyph, OpeningHit, WallDim, WallShape, wallPathD } from './planRender'
 
 const WALL_THICKNESS = 5
-const WALL_HEIGHT = 96
+const MEASURE_COLOR = '#0e9488'
 
 const OPENING_DEFAULTS: Record<string, number> = {
   door: 32,
@@ -48,6 +50,12 @@ interface ClusterRef {
   end: EndKey
 }
 
+interface SnapMark {
+  p: Pt
+  /** distances along a wall from its two ends, when snapped onto a wall line */
+  along?: { d0: number; d1: number }
+}
+
 type Drag =
   | { mode: 'pan'; startClient: Pt; startView: Viewport }
   | { mode: 'wall-end'; wallId: string; end: EndKey; cluster: ClusterRef[] }
@@ -63,16 +71,25 @@ type Drag =
   | { mode: 'bulge'; wallId: string }
   | { mode: 'furn-move'; id: string; offset: Pt; moved: boolean }
   | { mode: 'furn-rotate'; id: string }
-  | { mode: 'furn-resize'; id: string; corner: Pt; orig: Furniture }
+  | { mode: 'furn-resize'; id: string; corner: Pt; orig: { x: number; y: number; w: number; d: number; rot: number } }
   | { mode: 'opening-move'; id: string }
   | { mode: 'label-move'; id: string; offset: Pt }
+  | { mode: 'guide-move'; id: string }
 
 type FloatInput =
   | { kind: 'wall-len'; wallId: string }
   | { kind: 'label'; id: string }
 
+/** Active floor from the store, for use inside event handlers. */
+const fl = (): Floor => {
+  const s = useStore.getState()
+  return s.plan.floors[s.activeFloor]
+}
+
 export default function Editor2D() {
-  const plan = useStore((s) => s.plan)
+  const floor = useActiveFloor()
+  const activeFloor = useStore((s) => s.activeFloor)
+  const below = useStore((s) => (s.activeFloor > 0 ? s.plan.floors[s.activeFloor - 1] : null))
   const tool = useStore((s) => s.tool)
   const selection = useStore((s) => s.selection)
   const showDims = useStore((s) => s.showDims)
@@ -88,6 +105,7 @@ export default function Editor2D() {
 
   const dragRef = useRef<Drag | null>(null)
   const [draft, setDraftRaw] = useState<{ pts: Pt[]; cur: Pt | null } | null>(null)
+  const [snapMark, setSnapMark] = useState<SnapMark | null>(null)
   const setDraft = useCallback((d: { pts: Pt[]; cur: Pt | null } | null) => {
     setDraftRaw(d)
     if (!d) setSnapMark(null)
@@ -95,13 +113,18 @@ export default function Editor2D() {
   const draftRef = useRef(draft)
   draftRef.current = draft
   const [hoverWorld, setHoverWorld] = useState<Pt | null>(null)
-  const [snapMark, setSnapMark] = useState<Pt | null>(null)
   const [openingGhost, setOpeningGhost] = useState<{ wallId: string; t: number } | null>(null)
   const [floatInput, setFloatInput] = useState<FloatInput | null>(null)
   const [floatValue, setFloatValue] = useState('')
   const [spaceDown, setSpaceDown] = useState(false)
   const drawInputRef = useRef<HTMLInputElement>(null)
   const [drawValue, setDrawValue] = useState('')
+
+  // clear transient markers when the tool changes
+  useEffect(() => {
+    setSnapMark(null)
+    setOpeningGhost(null)
+  }, [tool])
 
   // ---------- sizing ----------
   useEffect(() => {
@@ -115,26 +138,16 @@ export default function Editor2D() {
     return () => ro.disconnect()
   }, [])
 
-  // clear transient markers when the tool changes
-  useEffect(() => {
-    setSnapMark(null)
-    setOpeningGhost(null)
-  }, [tool])
-
-  // Fit saved plan on first mount
-  const didFit = useRef(false)
-  useEffect(() => {
-    if (didFit.current || !size.w) return
-    didFit.current = true
-    fitView()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [size.w])
-
   const fitView = useCallback(() => {
-    const { plan } = useStore.getState()
+    const s = useStore.getState()
+    const floor = s.plan.floors[s.activeFloor]
+    const source =
+      floor.walls.length || floor.furniture.length
+        ? floor
+        : s.plan.floors.find((f) => f.walls.length) ?? floor
     const pts: Pt[] = []
-    for (const w of plan.walls) pts.push(w.a, w.b)
-    for (const f of plan.furniture) pts.push({ x: f.x, y: f.y })
+    for (const w of source.walls) pts.push(w.a, w.b)
+    for (const f of source.furniture) pts.push({ x: f.x, y: f.y })
     const b = planBounds(pts)
     const { w: pw, h: ph } = sizeRef.current
     if (!b) {
@@ -150,6 +163,14 @@ export default function Editor2D() {
       ppi: Math.max(0.15, ppi),
     })
   }, [])
+
+  // Fit saved plan on first mount
+  const didFit = useRef(false)
+  useEffect(() => {
+    if (didFit.current || !size.w) return
+    didFit.current = true
+    fitView()
+  }, [size.w, fitView])
 
   // ---------- coordinate transforms ----------
   const worldFromClient = useCallback((clientX: number, clientY: number): Pt => {
@@ -172,13 +193,17 @@ export default function Editor2D() {
 
   // ---------- snapping ----------
   const snapForDraw = useCallback(
-    (raw: Pt, from: Pt | null, altKey: boolean): { p: Pt; mark: Pt | null } => {
-      const { plan } = useStore.getState()
+    (raw: Pt, from: Pt | null, altKey: boolean): { p: Pt; mark: SnapMark | null } => {
+      const floor = fl()
       const ppi = viewRef.current.ppi
+      // 0) measurement guide points
+      for (const g of floor.guides) {
+        if (dist(raw, g) < 10 / ppi) return { p: { x: g.x, y: g.y }, mark: { p: g } }
+      }
       // 1) endpoint snap
       let best: Pt | null = null
       let bestD = 10 / ppi
-      for (const w of plan.walls) {
+      for (const w of floor.walls) {
         for (const e of [w.a, w.b]) {
           const d = dist(raw, e)
           if (d < bestD) {
@@ -187,18 +212,27 @@ export default function Editor2D() {
           }
         }
       }
-      if (best) return { p: best, mark: best }
-      // 2) wall-line snap
-      let bestW: Pt | null = null
+      if (best) return { p: best, mark: { p: best } }
+      // 2) wall-line snap, with distance-along readout
+      let bestWall: Wall | null = null
       let bestWD = 8 / ppi
-      for (const w of plan.walls) {
+      let bestWP: Pt | null = null
+      let bestWT = 0
+      for (const w of floor.walls) {
         const c = closestOnWall(w, raw)
         if (c.distance < bestWD) {
           bestWD = c.distance
-          bestW = c.point
+          bestWall = w
+          bestWP = c.point
+          bestWT = c.t
         }
       }
-      if (bestW) return { p: snapPoint(bestW, 0.5), mark: bestW }
+      if (bestWall && bestWP) {
+        const p = snapPoint(bestWP, 0.5)
+        const L = wallLength(bestWall)
+        const d0 = bestWT * L
+        return { p, mark: { p: bestWP, along: { d0, d1: L - d0 } } }
+      }
       // 3) angle + length snap from previous point
       if (from && !altKey) {
         const snapped = snapAngle(from, raw)
@@ -214,9 +248,8 @@ export default function Editor2D() {
 
   /** endpoints of other walls coincident with p */
   const clusterAt = useCallback((p: Pt, excludeWallId: string): ClusterRef[] => {
-    const { plan } = useStore.getState()
     const out: ClusterRef[] = []
-    for (const w of plan.walls) {
+    for (const w of fl().walls) {
       if (w.id === excludeWallId) continue
       if (dist(w.a, p) < 0.75) out.push({ wallId: w.id, end: 'a' })
       if (dist(w.b, p) < 0.75) out.push({ wallId: w.id, end: 'b' })
@@ -250,7 +283,7 @@ export default function Editor2D() {
             break
           }
           case 'wall-end': {
-            const wall = st.plan.walls.find((w) => w.id === d.wallId)
+            const wall = fl().walls.find((w) => w.id === d.wallId)
             if (!wall) break
             const other = d.end === 'a' ? wall.b : wall.a
             const { p, mark } = snapForDraw(world, other, ev.altKey)
@@ -264,14 +297,13 @@ export default function Editor2D() {
             const sd = snapPoint(delta, 1)
             const na = add(d.origA, sd)
             const nb = add(d.origB, sd)
-            const st2 = useStore.getState()
-            st2.updateWall(d.wallId, { a: na, b: nb })
+            st.updateWall(d.wallId, { a: na, b: nb })
             moveCluster(d.clusterA, na)
             moveCluster(d.clusterB, nb)
             break
           }
           case 'bulge': {
-            const wall = st.plan.walls.find((w) => w.id === d.wallId)
+            const wall = fl().walls.find((w) => w.id === d.wallId)
             if (!wall) break
             const mid = scale(add(wall.a, wall.b), 0.5)
             const n = perp(norm(sub(wall.b, wall.a)))
@@ -287,7 +319,7 @@ export default function Editor2D() {
             break
           }
           case 'furn-rotate': {
-            const f = st.plan.furniture.find((x) => x.id === d.id)
+            const f = fl().furniture.find((x) => x.id === d.id)
             if (!f) break
             const ang = (Math.atan2(world.y - f.y, world.x - f.x) * 180) / Math.PI + 90
             let rot = ev.altKey ? ang : Math.round(ang / 15) * 15
@@ -317,12 +349,13 @@ export default function Editor2D() {
             break
           }
           case 'opening-move': {
-            const op = st.plan.openings.find((o) => o.id === d.id)
+            const floor = fl()
+            const op = floor.openings.find((o) => o.id === d.id)
             if (!op) break
             let bestWall: Wall | null = null
             let bestT = 0
             let bestD = 20 / viewRef.current.ppi
-            for (const w of st.plan.walls) {
+            for (const w of floor.walls) {
               const c = closestOnWall(w, world)
               if (c.distance < bestD) {
                 bestD = c.distance
@@ -343,6 +376,11 @@ export default function Editor2D() {
             st.updateLabel(d.id, { x: p.x, y: p.y })
             break
           }
+          case 'guide-move': {
+            const { p } = snapForDraw(world, null, ev.altKey)
+            st.updateGuide(d.id, { x: p.x, y: p.y })
+            break
+          }
         }
       }
       const onUp = () => {
@@ -357,16 +395,35 @@ export default function Editor2D() {
     [worldFromClient, snapForDraw, moveCluster]
   )
 
+  // ---------- wall drawing ----------
+  const commitSegment = useCallback(
+    (p: Pt) => {
+      const d = draftRef.current
+      if (!d) return
+      const st = useStore.getState()
+      const last = d.pts[d.pts.length - 1]
+      if (dist(last, p) < 2) {
+        setDraft(null)
+        return
+      }
+      const start = d.pts[0]
+      const closing = d.pts.length >= 2 && dist(p, start) < 12 / viewRef.current.ppi
+      const end = closing ? start : p
+      st.checkpoint()
+      st.addWall({ a: last, b: end, thickness: WALL_THICKNESS, bulge: 0, height: fl().height })
+      setDrawValue('')
+      if (closing) setDraft(null)
+      else setDraft({ pts: [...d.pts, end], cur: end })
+    },
+    [setDraft]
+  )
+
   // ---------- background pointer handlers ----------
   const onSvgPointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (e.button === 1 || spaceDown || tool.type === 'pan') {
         beginDrag(
-          {
-            mode: 'pan',
-            startClient: { x: e.clientX, y: e.clientY },
-            startView: viewRef.current,
-          },
+          { mode: 'pan', startClient: { x: e.clientX, y: e.clientY }, startView: viewRef.current },
           e,
           false
         )
@@ -395,7 +452,7 @@ export default function Editor2D() {
       if (tool.type === 'opening') {
         if (openingGhost) {
           st.checkpoint()
-          const wall = st.plan.walls.find((w) => w.id === openingGhost.wallId)
+          const wall = fl().walls.find((w) => w.id === openingGhost.wallId)
           if (wall) {
             const width = OPENING_DEFAULTS[tool.opening] ?? 36
             const L = dist(wall.a, wall.b) || 1
@@ -435,33 +492,18 @@ export default function Editor2D() {
         return
       }
 
+      if (tool.type === 'measure') {
+        const { p } = snapForDraw(world, null, e.altKey)
+        st.addGuide(p.x, p.y)
+        return
+      }
+
       // select tool on background: clear selection
       st.select(null)
       setFloatInput(null)
     },
-    [tool, spaceDown, beginDrag, worldFromClient, snapForDraw, openingGhost]
+    [tool, spaceDown, beginDrag, worldFromClient, snapForDraw, openingGhost, commitSegment, setDraft]
   )
-
-  const commitSegment = useCallback((p: Pt) => {
-    const d = draftRef.current
-    if (!d) return
-    const st = useStore.getState()
-    const last = d.pts[d.pts.length - 1]
-    if (dist(last, p) < 2) {
-      // zero-length: end the chain
-      setDraft(null)
-      return
-    }
-    // close the loop if near the start
-    const start = d.pts[0]
-    const closing = d.pts.length >= 2 && dist(p, start) < 12 / viewRef.current.ppi
-    const end = closing ? start : p
-    st.checkpoint()
-    st.addWall({ a: last, b: end, thickness: WALL_THICKNESS, bulge: 0, height: WALL_HEIGHT })
-    setDrawValue('')
-    if (closing) setDraft(null)
-    else setDraft({ pts: [...d.pts, end], cur: end })
-  }, [])
 
   const onSvgPointerMove = useCallback(
     (e: React.PointerEvent) => {
@@ -474,17 +516,16 @@ export default function Editor2D() {
         const last = d.pts[d.pts.length - 1]
         const { p, mark } = snapForDraw(world, last, e.altKey)
         setSnapMark(mark)
-        setDraft({ ...d, cur: p })
-      } else if (tool.type === 'wall') {
+        setDraftRaw({ ...d, cur: p })
+      } else if (tool.type === 'wall' || tool.type === 'measure') {
         const { mark } = snapForDraw(world, null, e.altKey)
         setSnapMark(mark)
       }
 
       if (tool.type === 'opening') {
-        const st = useStore.getState()
         let best: { wallId: string; t: number } | null = null
         let bestD = 24 / viewRef.current.ppi
-        for (const w of st.plan.walls) {
+        for (const w of fl().walls) {
           if (w.bulge) continue // openings supported on straight walls
           const c = closestOnWall(w, world)
           if (c.distance < bestD) {
@@ -500,7 +541,7 @@ export default function Editor2D() {
 
   const onSvgDoubleClick = useCallback(() => {
     if (draftRef.current) setDraft(null)
-  }, [])
+  }, [setDraft])
 
   // ---------- wheel: scroll = pan, ctrl/cmd = zoom ----------
   useEffect(() => {
@@ -587,9 +628,12 @@ export default function Editor2D() {
         case 't':
           st.setTool({ type: 'label' })
           break
+        case 'm':
+          st.setTool({ type: 'measure' })
+          break
         case 'r': {
           if (st.selection?.kind === 'furniture') {
-            const f = st.plan.furniture.find((x) => x.id === st.selection!.id)
+            const f = fl().furniture.find((x) => x.id === st.selection!.id)
             if (f) {
               st.checkpoint()
               st.updateFurniture(f.id, { rot: (f.rot + 90) % 360 })
@@ -604,14 +648,18 @@ export default function Editor2D() {
         const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0
         const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0
         const sel = st.selection
+        const floor = fl()
         if (sel.kind === 'furniture') {
-          const f = st.plan.furniture.find((x) => x.id === sel.id)
+          const f = floor.furniture.find((x) => x.id === sel.id)
           if (f) st.updateFurniture(f.id, { x: f.x + dx, y: f.y + dy })
         } else if (sel.kind === 'label') {
-          const l = st.plan.labels.find((x) => x.id === sel.id)
+          const l = floor.labels.find((x) => x.id === sel.id)
           if (l) st.updateLabel(l.id, { x: l.x + dx, y: l.y + dy })
+        } else if (sel.kind === 'guide') {
+          const g = floor.guides.find((x) => x.id === sel.id)
+          if (g) st.updateGuide(g.id, { x: g.x + dx, y: g.y + dy })
         } else if (sel.kind === 'wall') {
-          const w = st.plan.walls.find((x) => x.id === sel.id)
+          const w = floor.walls.find((x) => x.id === sel.id)
           if (w)
             st.updateWall(w.id, {
               a: { x: w.a.x + dx, y: w.a.y + dy },
@@ -630,7 +678,7 @@ export default function Editor2D() {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
     }
-  }, [floatInput])
+  }, [floatInput, setDraft])
 
   // ---------- draw-length input ----------
   const applyDrawValue = useCallback(() => {
@@ -647,14 +695,13 @@ export default function Editor2D() {
     commitSegment(add(last, scale(dir, v)))
     setDrawValue('')
     setTimeout(() => drawInputRef.current?.focus(), 0)
-  }, [drawValue, commitSegment])
+  }, [drawValue, commitSegment, setDraft])
 
   // ---------- float input (wall length / label text) ----------
   useEffect(() => {
-    // open the wall-length editor whenever a wall is selected
     if (selection?.kind === 'wall') {
       setFloatInput({ kind: 'wall-len', wallId: selection.id })
-      const w = plan.walls.find((x) => x.id === selection.id)
+      const w = floor.walls.find((x) => x.id === selection.id)
       if (w) setFloatValue(fmtLenShort(dist(w.a, w.b)))
     } else if (floatInput?.kind === 'wall-len') {
       setFloatInput(null)
@@ -667,7 +714,7 @@ export default function Editor2D() {
     if (!fi) return
     const st = useStore.getState()
     if (fi.kind === 'wall-len') {
-      const w = st.plan.walls.find((x) => x.id === fi.wallId)
+      const w = fl().walls.find((x) => x.id === fi.wallId)
       const v = parseLen(floatValue)
       if (w && v != null && v > 1) {
         st.checkpoint()
@@ -675,7 +722,6 @@ export default function Editor2D() {
         const oldB = w.b
         const nb = add(w.a, scale(dir, v))
         st.updateWall(w.id, { b: nb })
-        // carry attached walls with the moved endpoint
         for (const c of clusterAt(oldB, w.id)) {
           st.updateWall(c.wallId, { [c.end]: nb } as Partial<Wall>)
         }
@@ -685,7 +731,6 @@ export default function Editor2D() {
       const text = floatValue.trim()
       if (text) st.updateLabel(fi.id, { text })
       else {
-        // empty label: remove it
         st.select({ kind: 'label', id: fi.id })
         st.deleteSelected()
       }
@@ -701,19 +746,22 @@ export default function Editor2D() {
   const handleSize = 9 / view.ppi
   const fontWorld = 11.5 / view.ppi
 
-  const wallsById = useMemo(() => {
-    const m = new Map<string, Wall>()
-    for (const w of plan.walls) m.set(w.id, w)
-    return m
-  }, [plan.walls])
-
-  const sortedFurniture = useMemo(
-    () => [...plan.furniture].sort((a, b) => (a.kind === 'rug' ? -1 : 0) - (b.kind === 'rug' ? -1 : 0)),
-    [plan.furniture]
-  )
-
   // debug hook for scripted testing (dev only)
   if (import.meta.env.DEV) (window as any).__view = { view, size }
+
+  const wallsById = useMemo(() => {
+    const m = new Map<string, Wall>()
+    for (const w of floor.walls) m.set(w.id, w)
+    return m
+  }, [floor.walls])
+
+  const sortedFurniture = useMemo(
+    () =>
+      [...floor.furniture].sort(
+        (a, b) => (a.kind === 'rug' ? -1 : 0) - (b.kind === 'rug' ? -1 : 0)
+      ),
+    [floor.furniture]
+  )
 
   const cursor =
     spaceDown || tool.type === 'pan'
@@ -728,14 +776,25 @@ export default function Editor2D() {
     const w = wallsById.get(floatInput.wallId)
     if (w) floatPos = screenFromWorld(wallPointAt(w, 0.5))
   } else if (floatInput?.kind === 'label') {
-    const l = plan.labels.find((x) => x.id === floatInput.id)
+    const l = floor.labels.find((x) => x.id === floatInput.id)
     if (l) floatPos = screenFromWorld({ x: l.x, y: l.y })
   }
   const drawCurScreen = draft?.cur ? screenFromWorld(draft.cur) : null
 
   const selectedFurn =
-    selection?.kind === 'furniture' ? plan.furniture.find((f) => f.id === selection.id) : undefined
+    selection?.kind === 'furniture'
+      ? floor.furniture.find((f) => f.id === selection.id)
+      : undefined
   const selectedWall = selection?.kind === 'wall' ? wallsById.get(selection.id) : undefined
+
+  // chain running total while drawing
+  let chainTotal = 0
+  if (draft && draft.cur) {
+    for (let i = 0; i < draft.pts.length - 1; i++) chainTotal += dist(draft.pts[i], draft.pts[i + 1])
+    chainTotal += dist(draft.pts[draft.pts.length - 1], draft.cur)
+  }
+
+  const guidesVisible = floor.guides
 
   return (
     <div ref={wrapRef} className="editor-canvas" style={{ cursor }}>
@@ -768,6 +827,29 @@ export default function Editor2D() {
         )}
         <rect x={minX} y={minY} width={pw / view.ppi} height={ph / view.ppi} fill="url(#gridBig)" />
 
+        {/* underlay: the floor below, for alignment */}
+        {below && (
+          <g opacity={0.28} pointerEvents="none">
+            {below.walls.map((w) => (
+              <path
+                key={w.id}
+                d={wallPathD(w)}
+                stroke="#71717a"
+                strokeWidth={w.thickness}
+                strokeLinecap="square"
+                fill="none"
+              />
+            ))}
+            {below.furniture
+              .filter((f) => f.kind === 'staircase')
+              .map((f) => (
+                <g key={f.id} transform={`translate(${f.x} ${f.y}) rotate(${f.rot})`}>
+                  <Glyph kind={f.kind} w={f.w} d={f.d} />
+                </g>
+              ))}
+          </g>
+        )}
+
         {/* furniture */}
         {sortedFurniture.map((f) => (
           <g
@@ -784,20 +866,13 @@ export default function Editor2D() {
             }}
             style={{ cursor: tool.type === 'select' ? 'move' : undefined }}
           >
-            <rect
-              x={-f.w / 2}
-              y={-f.d / 2}
-              width={f.w}
-              height={f.d}
-              fill="transparent"
-              stroke="none"
-            />
+            <rect x={-f.w / 2} y={-f.d / 2} width={f.w} height={f.d} fill="transparent" stroke="none" />
             <Glyph kind={f.kind} w={f.w} d={f.d} />
           </g>
         ))}
 
         {/* walls */}
-        {plan.walls.map((w) => (
+        {floor.walls.map((w) => (
           <g key={w.id}>
             <WallShape w={w} selected={selection?.kind === 'wall' && selection.id === w.id} />
             <path
@@ -828,7 +903,7 @@ export default function Editor2D() {
         ))}
 
         {/* openings */}
-        {plan.openings.map((o) => {
+        {floor.openings.map((o) => {
           const wall = wallsById.get(o.wallId)
           if (!wall) return null
           return (
@@ -854,7 +929,7 @@ export default function Editor2D() {
 
         {/* wall dimensions */}
         {showDims &&
-          plan.walls.map((w) => {
+          floor.walls.map((w) => {
             if (dist(w.a, w.b) * view.ppi < 46) return null
             return (
               <WallDim
@@ -867,7 +942,7 @@ export default function Editor2D() {
           })}
 
         {/* labels */}
-        {plan.labels.map((l) => (
+        {floor.labels.map((l) => (
           <text
             key={l.id}
             x={l.x}
@@ -898,6 +973,67 @@ export default function Editor2D() {
             )}
           </text>
         ))}
+
+        {/* measurement guides: rays first, then markers */}
+        {guidesVisible.map((g) => {
+          const rays = guideRays(g, floor.walls)
+          const selectedG = selection?.kind === 'guide' && selection.id === g.id
+          return (
+            <g key={g.id}>
+              {rays.map((r, i) => {
+                const mid = { x: (g.x + r.hit.x) / 2, y: (g.y + r.hit.y) / 2 }
+                const horizontal = r.dir.y === 0
+                if (r.distance < 2) return null
+                return (
+                  <g key={i} pointerEvents="none">
+                    <line
+                      x1={g.x}
+                      y1={g.y}
+                      x2={r.hit.x}
+                      y2={r.hit.y}
+                      stroke={MEASURE_COLOR}
+                      strokeWidth={1}
+                      strokeDasharray="4 4"
+                      vectorEffect="non-scaling-stroke"
+                      opacity={0.75}
+                    />
+                    <text
+                      x={mid.x + (horizontal ? 0 : fontWorld * 0.7)}
+                      y={mid.y - (horizontal ? fontWorld * 0.5 : 0)}
+                      fontSize={fontWorld * 0.88}
+                      fill={MEASURE_COLOR}
+                      fontFamily="Inter, system-ui, sans-serif"
+                      fontWeight={600}
+                      textAnchor={horizontal ? 'middle' : 'start'}
+                      dominantBaseline="middle"
+                      style={{ userSelect: 'none' }}
+                    >
+                      {fmtLenShort(r.distance)}
+                    </text>
+                  </g>
+                )
+              })}
+              {/* diamond marker */}
+              <rect
+                x={-handleSize * 0.55}
+                y={-handleSize * 0.55}
+                width={handleSize * 1.1}
+                height={handleSize * 1.1}
+                transform={`translate(${g.x} ${g.y}) rotate(45)`}
+                fill={selectedG ? MEASURE_COLOR : '#fff'}
+                stroke={MEASURE_COLOR}
+                strokeWidth={1.6}
+                vectorEffect="non-scaling-stroke"
+                style={{ cursor: tool.type === 'select' ? 'move' : undefined }}
+                onPointerDown={(e) => {
+                  if (tool.type !== 'select' || spaceDown) return
+                  useStore.getState().select({ kind: 'guide', id: g.id })
+                  beginDrag({ mode: 'guide-move', id: g.id }, e)
+                }}
+              />
+            </g>
+          )
+        })}
 
         {/* selected wall handles */}
         {selectedWall && (
@@ -930,7 +1066,6 @@ export default function Editor2D() {
                 />
               )
             })}
-            {/* curve handle */}
             {(() => {
               const p = wallPointAt(selectedWall, 0.5)
               return (
@@ -1016,7 +1151,15 @@ export default function Editor2D() {
                       vectorEffect="non-scaling-stroke"
                       style={{ cursor: 'nwse-resize' }}
                       onPointerDown={(e) =>
-                        beginDrag({ mode: 'furn-resize', id: f.id, corner: c, orig: { ...f } }, e)
+                        beginDrag(
+                          {
+                            mode: 'furn-resize',
+                            id: f.id,
+                            corner: c,
+                            orig: { x: f.x, y: f.y, w: f.w, d: f.d, rot: f.rot },
+                          },
+                          e
+                        )
                       }
                     />
                   )
@@ -1055,6 +1198,7 @@ export default function Editor2D() {
                   textAnchor="middle"
                 >
                   {fmtLenShort(L)}
+                  {draft.pts.length > 1 ? `  ·  total ${fmtLenShort(chainTotal)}` : ''}
                 </text>
               )
             })()}
@@ -1093,30 +1237,69 @@ export default function Editor2D() {
         {tool.type === 'place' &&
           hoverWorld &&
           (() => {
-            const dims = ghostDims(tool.kind)
+            const it = catalogItem(tool.kind)
             return (
               <g
                 transform={`translate(${snapTo(hoverWorld.x, 1)} ${snapTo(hoverWorld.y, 1)})`}
                 opacity={0.5}
                 pointerEvents="none"
               >
-                <Glyph kind={tool.kind} w={dims.w} d={dims.d} />
+                <Glyph kind={tool.kind} w={it.w} d={it.d} />
               </g>
             )
           })()}
 
-        {/* snap marker */}
+        {/* measure tool crosshair ghost */}
+        {tool.type === 'measure' && hoverWorld && !snapMark && (
+          <g pointerEvents="none" opacity={0.6}>
+            <line
+              x1={snapTo(hoverWorld.x, 1) - 8 / view.ppi}
+              y1={snapTo(hoverWorld.y, 1)}
+              x2={snapTo(hoverWorld.x, 1) + 8 / view.ppi}
+              y2={snapTo(hoverWorld.y, 1)}
+              stroke={MEASURE_COLOR}
+              strokeWidth={1.2}
+              vectorEffect="non-scaling-stroke"
+            />
+            <line
+              x1={snapTo(hoverWorld.x, 1)}
+              y1={snapTo(hoverWorld.y, 1) - 8 / view.ppi}
+              x2={snapTo(hoverWorld.x, 1)}
+              y2={snapTo(hoverWorld.y, 1) + 8 / view.ppi}
+              stroke={MEASURE_COLOR}
+              strokeWidth={1.2}
+              vectorEffect="non-scaling-stroke"
+            />
+          </g>
+        )}
+
+        {/* snap marker + along-wall readout */}
         {snapMark && (
-          <circle
-            cx={snapMark.x}
-            cy={snapMark.y}
-            r={5 / view.ppi}
-            fill="none"
-            stroke={ACCENT}
-            strokeWidth={2}
-            vectorEffect="non-scaling-stroke"
-            pointerEvents="none"
-          />
+          <g pointerEvents="none">
+            <circle
+              cx={snapMark.p.x}
+              cy={snapMark.p.y}
+              r={5 / view.ppi}
+              fill="none"
+              stroke={ACCENT}
+              strokeWidth={2}
+              vectorEffect="non-scaling-stroke"
+            />
+            {snapMark.along && (
+              <text
+                x={snapMark.p.x}
+                y={snapMark.p.y - fontWorld * 1.4}
+                fontSize={fontWorld * 0.92}
+                fill={ACCENT}
+                fontWeight={600}
+                fontFamily="Inter, system-ui, sans-serif"
+                textAnchor="middle"
+                style={{ userSelect: 'none' }}
+              >
+                {`${fmtLenShort(snapMark.along.d0)} ⟷ ${fmtLenShort(snapMark.along.d1)}`}
+              </text>
+            )}
+          </g>
         )}
       </svg>
 
@@ -1173,16 +1356,10 @@ export default function Editor2D() {
 
       {/* zoom controls */}
       <div className="zoom-controls">
-        <button
-          title="Zoom in"
-          onClick={() => setView((v) => ({ ...v, ppi: Math.min(12, v.ppi * 1.3) }))}
-        >
+        <button title="Zoom in" onClick={() => setView((v) => ({ ...v, ppi: Math.min(12, v.ppi * 1.3) }))}>
           +
         </button>
-        <button
-          title="Zoom out"
-          onClick={() => setView((v) => ({ ...v, ppi: Math.max(0.12, v.ppi / 1.3) }))}
-        >
+        <button title="Zoom out" onClick={() => setView((v) => ({ ...v, ppi: Math.max(0.12, v.ppi / 1.3) }))}>
           −
         </button>
         <button title="Fit plan" onClick={fitView}>
@@ -1195,22 +1372,19 @@ export default function Editor2D() {
         {tool.type === 'wall'
           ? draft
             ? 'Click to place · type a length + Enter for exact · Enter/Esc to finish'
-            : 'Click to start a wall · walls snap to endpoints & 45°'
+            : 'Click to start a wall · snaps to marks, endpoints & 45°'
           : tool.type === 'opening'
             ? 'Hover a wall, click to place. Drag later to reposition.'
             : tool.type === 'place'
               ? 'Click to place · hold Shift to place multiple'
               : tool.type === 'label'
                 ? 'Click to add a room label'
-                : 'Scroll to pan · ⌘/Ctrl+scroll to zoom · Space+drag to pan'}
+                : tool.type === 'measure'
+                  ? 'Click to drop a reference mark · marks show distances to nearby walls and snap like endpoints'
+                  : activeFloor > 0
+                    ? `Editing ${floor.name} — the floor below is shown in gray`
+                    : 'Scroll to pan · ⌘/Ctrl+scroll to zoom · Space+drag to pan'}
       </div>
     </div>
   )
-}
-
-// default dims for placement ghost
-import { catalogItem } from '../model/catalog'
-function ghostDims(kind: string): { w: number; d: number } {
-  const it = catalogItem(kind)
-  return { w: it.w, d: it.d }
 }

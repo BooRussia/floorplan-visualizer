@@ -1,6 +1,7 @@
 # Floorplan Visualizer
 
-Draw a precise 2D floorplan, then generate a clean, textured 3D "dollhouse" view of it with one click.
+Draw precise 2D floorplans — up to three stories — then generate a clean, textured 3D
+"dollhouse" view of the whole building with one click.
 
 ![2D editor → 3D view]
 
@@ -24,16 +25,26 @@ to the browser (localStorage) and can be exported/imported as JSON from the tool
 | Doors | `D` | Single, double, sliding glass, bifold, cased opening — pick from the ▾ menu. Hover a wall and click to place; drag along (or across to another) wall later. Flip swing/hinge in the right panel. |
 | Window | `N` | Same placement flow as doors. |
 | Label | `T` | Click to add a room label; double-click a label to rename. |
+| Measure | `M` | Drop Photoshop-style reference marks. Each mark shows dotted distance rays to the four nearest walls, and walls snap to marks while drawing. "✕ Marks" clears them. |
 
 - **Exact measurements** — select any wall and a floating input appears at its midpoint;
   type the length you want and connected walls follow. Thickness and 3D height are in
-  the right panel.
+  the right panel. While drawing a chain, the label shows the current segment **and the
+  running total**; snapping onto an existing wall shows how far along it you are
+  (e.g. `25'1" ⟷ 30'11"`) so you can hit an exact spot on a wall.
 - **Curved walls** — select a wall and drag the round midpoint handle to bow it.
   "Straighten" resets it.
 - **Furniture** — 35+ items (kitchen, bathroom, bedroom, living, dining) in the left
   library. Click an item then click the plan (hold Shift to place several). Selected
   furniture gets corner resize handles and a rotate handle; `R` rotates 90°,
   `⌘D` duplicates.
+- **Floors** — up to 3 stories via the numbered tabs in the toolbar. Each floor has its
+  own story height (right panel with nothing selected). While editing an upper floor,
+  the floor below shows as a gray underlay for alignment.
+- **Staircases** — in the Structure library category. When placed, the run is
+  auto-computed from the story height using real rise/run rules (risers ≤ 7¾",
+  10½" treads), and the floor above automatically gets a stairwell opening. Changing a
+  story's height re-sizes its staircases.
 - **Undo/redo** — `⌘Z` / `⌘⇧Z`.
 - **Navigation** — scroll to pan, `⌘`+scroll (or pinch) to zoom, Space+drag or middle-drag
   to pan, plus on-screen zoom/fit buttons.
@@ -43,9 +54,11 @@ to the browser (localStorage) and can be exported/imported as JSON from the tool
 Hit **Generate 3D** and the plan is rebuilt as a realistic cutaway model: textured wood
 floors (auto-detected room interiors, any shape — including curved walls), white walls with
 gray caps on a platform slab, glass windows, open door leaves, sliding panels, and parametric
-3D furniture.
+3D furniture. Multi-story plans stack into a full dollhouse with structural bands between
+stories, stepped staircases with railings, and stairwell openings cut through upper floors.
 
-- Orbit (drag), zoom (scroll), recenter (⌂).
+- Orbit (drag), zoom (scroll), recenter (⌂). With multiple floors, use the **All / 1 / 2 / 3**
+  switcher to isolate a story.
 - Click furniture to select it, drag to move it on the floor.
 - Resize via the right panel — models are **parametric**, so a 9' sofa gets more cushions
   instead of stretching; nothing squishes.

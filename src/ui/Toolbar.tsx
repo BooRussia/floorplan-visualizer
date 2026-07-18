@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
-import { useStore } from '../model/store'
+import { useActiveFloor, useStore } from '../model/store'
 import { SAMPLE_PLAN } from '../model/samplePlan'
-import type { OpeningType } from '../model/types'
+import { MAX_FLOORS, type OpeningType } from '../model/types'
 
 const DOOR_TYPES: { type: OpeningType; label: string }[] = [
   { type: 'door', label: 'Single door' },
@@ -42,6 +42,11 @@ export default function Toolbar() {
   const canRedo = useStore((s) => s.future.length > 0)
   const [doorMenu, setDoorMenu] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const floors = useStore((s) => s.plan.floors)
+  const activeFloor = useStore((s) => s.activeFloor)
+  const setActiveFloor = useStore((s) => s.setActiveFloor)
+  const addFloor = useStore((s) => s.addFloor)
+  const hasGuides = useActiveFloor().guides.length > 0
 
   const doorActive = tool.type === 'opening' && tool.opening !== 'window'
   const currentDoor: OpeningType = doorActive ? (tool as any).opening : 'door'
@@ -60,9 +65,9 @@ export default function Toolbar() {
   const importJson = (file: File) => {
     file.text().then((text) => {
       try {
-        const p = JSON.parse(text)
-        if (p && Array.isArray(p.walls)) useStore.getState().loadPlan(p)
-        else alert('That file does not look like a floorplan export.')
+        if (!useStore.getState().loadPlan(JSON.parse(text))) {
+          alert('That file does not look like a floorplan export.')
+        }
       } catch {
         alert('Could not read that file as JSON.')
       }
@@ -77,6 +82,25 @@ export default function Toolbar() {
 
       {view === '2d' && (
         <>
+          <div className="tb-floors" role="tablist" aria-label="Floors">
+            {floors.map((f, i) => (
+              <button
+                key={f.id}
+                role="tab"
+                aria-selected={i === activeFloor}
+                className={`tb-floor ${i === activeFloor ? 'active' : ''}`}
+                title={`Edit ${f.name}`}
+                onClick={() => setActiveFloor(i)}
+              >
+                {i + 1}
+              </button>
+            ))}
+            {floors.length < MAX_FLOORS && (
+              <button className="tb-floor add" title="Add a floor above" onClick={addFloor}>
+                +
+              </button>
+            )}
+          </div>
           <div className="tb-group">
             <ToolButton
               active={tool.type === 'select'}
@@ -150,6 +174,26 @@ export default function Toolbar() {
               </svg>
               Label
             </ToolButton>
+            <ToolButton
+              active={tool.type === 'measure'}
+              onClick={() => setTool({ type: 'measure' })}
+              title="Drop measurement reference marks (M)"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M8 2v12M2 8h12" stroke="currentColor" strokeWidth="1.4" />
+                <path d="M8 5.5L10.5 8 8 10.5 5.5 8z" stroke="currentColor" strokeWidth="1.2" fill="none" />
+              </svg>
+              Measure
+            </ToolButton>
+            {hasGuides && (
+              <ToolButton
+                onClick={() => useStore.getState().clearGuides()}
+                title="Clear all measurement marks on this floor"
+                active={false}
+              >
+                ✕ Marks
+              </ToolButton>
+            )}
           </div>
 
           <div className="tb-group">

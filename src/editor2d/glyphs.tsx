@@ -37,6 +37,26 @@ export function Glyph({ kind, w, d }: { kind: string; w: number; d: number }) {
   const hw = w / 2
   const hd = d / 2
   switch (kind) {
+    case 'staircase': {
+      // treads across the run; walk-up direction is -y (bottom step at +y)
+      const treads = Math.max(3, Math.round(d / 10.5))
+      return (
+        <g>
+          <Rect w={w} d={d} />
+          {Array.from({ length: treads - 1 }, (_, i) => {
+            const y = hd - ((i + 1) * d) / treads
+            return <line key={i} x1={-hw} y1={y} x2={hw} y2={y} style={thinNoFill} />
+          })}
+          {/* center walk line with UP arrow */}
+          <line x1={0} y1={hd - 4} x2={0} y2={-hd + 8} style={thinNoFill} />
+          <path
+            d={`M ${-3.5} ${-hd + 11} L 0 ${-hd + 5} L 3.5 ${-hd + 11}`}
+            style={{ ...thinNoFill, fill: 'none' }}
+          />
+          <circle cx={0} cy={hd - 4} r={1.6} style={{ ...thin, fill: stroke }} />
+        </g>
+      )
+    }
     case 'base-cabinet':
       return (
         <g>

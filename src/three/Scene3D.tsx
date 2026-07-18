@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { useStore } from '../model/store'
@@ -19,6 +19,20 @@ interface ThreeState {
 export default function Scene3D() {
   const mountRef = useRef<HTMLDivElement>(null)
   const stateRef = useRef<ThreeState | null>(null)
+  const floorCount = useStore((s) => s.plan.floors.length)
+  const [visFloor, setVisFloor] = useState<'all' | number>('all')
+  const visRef = useRef(visFloor)
+  visRef.current = visFloor
+
+  // apply floor visibility to the built groups
+  const applyVisibility = () => {
+    const st = stateRef.current
+    if (!st?.built) return
+    st.built.floorGroups.forEach((g, i) => {
+      g.visible = visRef.current === 'all' || visRef.current === i
+    })
+  }
+  useEffect(applyVisibility, [visFloor])
 
   useEffect(() => {
     const mount = mountRef.current!
@@ -34,12 +48,7 @@ export default function Scene3D() {
     const scene = new THREE.Scene()
     scene.background = new THREE.Color('#eceef1')
 
-    const camera = new THREE.PerspectiveCamera(
-      38,
-      mount.clientWidth / mount.clientHeight,
-      2,
-      20000
-    )
+    const camera = new THREE.PerspectiveCamera(38, mount.clientWidth / mount.clientHeight, 2, 20000)
 
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
@@ -48,7 +57,6 @@ export default function Scene3D() {
     controls.minDistance = 40
     controls.maxDistance = 6000
 
-    // lights
     const hemi = new THREE.HemisphereLight('#ffffff', '#d6d8dd', 1.05)
     scene.add(hemi)
     const sun = new THREE.DirectionalLight('#fff3e2', 1.9)
@@ -61,7 +69,6 @@ export default function Scene3D() {
     fill.position.set(-600, 500, 500)
     scene.add(fill)
 
-    // ground
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(40000, 40000),
       new THREE.MeshStandardMaterial({ color: '#e6e7ea', roughness: 0.96 })
@@ -92,34 +99,8 @@ export default function Scene3D() {
         center.y + distance * Math.sin(el),
         center.z + distance * Math.cos(el) * Math.sin(az)
       )
-      controls.target.copy(center).setY(20)
+      controls.target.copy(center).setY(Math.max(20, center.y * 0.8))
       controls.update()
-    }
-
-    const rebuild = (fit: boolean) => {
-      const plan = useStore.getState().plan
-      if (st.built) {
-        scene.remove(st.built.group)
-        disposePlan(st.built.group)
-      }
-      clearSelectionBox()
-      st.built = buildPlan(plan)
-      scene.add(st.built.group)
-      // aim the sun and shadow camera at the plan
-      const { center, radius } = st.built
-      sun.position.set(center.x + radius * 1.1, radius * 2.2, center.z + radius * 0.7)
-      sun.target.position.copy(center)
-      sun.target.updateMatrixWorld()
-      const cam = sun.shadow.camera as THREE.OrthographicCamera
-      const r = radius * 1.6
-      cam.left = -r
-      cam.right = r
-      cam.top = r
-      cam.bottom = -r
-      cam.far = radius * 8
-      cam.updateProjectionMatrix()
-      if (fit) fitCamera(center, radius)
-      syncSelectionBox()
     }
 
     const clearSelectionBox = () => {
@@ -134,17 +115,42 @@ export default function Scene3D() {
       clearSelectionBox()
       const sel = useStore.getState().selection
       if (sel?.kind === 'furniture' && st.built) {
-        const g = st.built.furniture.get(sel.id)
-        if (g) {
-          st.selectionBox = new THREE.BoxHelper(g, 0x2563eb)
+        const info = st.built.furniture.get(sel.id)
+        if (info) {
+          st.selectionBox = new THREE.BoxHelper(info.group, 0x2563eb)
           scene.add(st.selectionBox)
         }
       }
     }
 
+    const rebuild = (fit: boolean) => {
+      const plan = useStore.getState().plan
+      if (st.built) {
+        scene.remove(st.built.group)
+        disposePlan(st.built.group)
+      }
+      clearSelectionBox()
+      st.built = buildPlan(plan)
+      scene.add(st.built.group)
+      applyVisibility()
+      const { center, radius } = st.built
+      sun.position.set(center.x + radius * 1.1, center.y + radius * 2.2, center.z + radius * 0.7)
+      sun.target.position.copy(center)
+      sun.target.updateMatrixWorld()
+      const cam = sun.shadow.camera as THREE.OrthographicCamera
+      const r = radius * 1.8
+      cam.left = -r
+      cam.right = r
+      cam.top = r
+      cam.bottom = -r
+      cam.far = radius * 8
+      cam.updateProjectionMatrix()
+      if (fit) fitCamera(center, radius)
+      syncSelectionBox()
+    }
+
     rebuild(true)
 
-    // rebuild on plan changes (debounced), selection box on selection changes
     let timer: ReturnType<typeof setTimeout> | undefined
     let lastPlan = useStore.getState().plan
     let lastSel = useStore.getState().selection
@@ -160,21 +166,28 @@ export default function Scene3D() {
       }
     })
 
-    // picking + drag-move on the floor plane
+    // picking + drag-move on the furniture's own floor plane
     const ray = new THREE.Raycaster()
     const ndc = new THREE.Vector2()
-    const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
+    const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
     let dragging: { id: string; grabOffset: THREE.Vector3; moved: boolean } | null = null
 
-    const pick = (ev: PointerEvent): string | null => {
+    const setNdc = (ev: PointerEvent) => {
       const rect = renderer.domElement.getBoundingClientRect()
       ndc.set(
         ((ev.clientX - rect.left) / rect.width) * 2 - 1,
         -((ev.clientY - rect.top) / rect.height) * 2 + 1
       )
-      ray.setFromCamera(ndc, camera)
+    }
+
+    const pick = (ev: PointerEvent): string | null => {
       if (!st.built) return null
-      const groups = [...st.built.furniture.values()]
+      setNdc(ev)
+      ray.setFromCamera(ndc, camera)
+      const groups: THREE.Object3D[] = []
+      for (const info of st.built.furniture.values()) {
+        if (st.built.floorGroups[info.floorIndex].visible) groups.push(info.group)
+      }
       const hits = ray.intersectObjects(groups, true)
       for (const hit of hits) {
         let obj: THREE.Object3D | null = hit.object
@@ -187,28 +200,31 @@ export default function Scene3D() {
     }
 
     const planePoint = (ev: PointerEvent): THREE.Vector3 | null => {
-      const rect = renderer.domElement.getBoundingClientRect()
-      ndc.set(
-        ((ev.clientX - rect.left) / rect.width) * 2 - 1,
-        -((ev.clientY - rect.top) / rect.height) * 2 + 1
-      )
+      setNdc(ev)
       ray.setFromCamera(ndc, camera)
       const out = new THREE.Vector3()
-      return ray.ray.intersectPlane(floorPlane, out) ? out : null
+      return ray.ray.intersectPlane(dragPlane, out) ? out : null
     }
 
     const onPointerDown = (ev: PointerEvent) => {
       if (ev.button !== 0) return
       const id = pick(ev)
       const store = useStore.getState()
-      if (id) {
+      if (id && st.built) {
+        const info = st.built.furniture.get(id)!
+        // edits (panel + drag) must land on this furniture's floor
+        store.setActiveFloor(info.floorIndex)
         store.select({ kind: 'furniture', id })
-        const g = st.built!.furniture.get(id)!
+        dragPlane.constant = -(info.elevation + 0.12)
         const p = planePoint(ev)
         if (p) {
           dragging = {
             id,
-            grabOffset: new THREE.Vector3().subVectors(g.position, p),
+            grabOffset: new THREE.Vector3(
+              info.group.position.x - p.x,
+              0,
+              info.group.position.z - p.z
+            ),
             moved: false,
           }
           controls.enabled = false
@@ -218,25 +234,30 @@ export default function Scene3D() {
       }
     }
     const onPointerMove = (ev: PointerEvent) => {
-      if (!dragging) return
+      if (!dragging || !st.built) return
       const p = planePoint(ev)
       if (!p) return
-      const g = st.built?.furniture.get(dragging.id)
-      if (!g) return
+      const info = st.built.furniture.get(dragging.id)
+      if (!info) return
       if (!dragging.moved) {
         dragging.moved = true
         useStore.getState().checkpoint()
       }
-      g.position.set(p.x + dragging.grabOffset.x, g.position.y, p.z + dragging.grabOffset.z)
+      info.group.position.set(
+        p.x + dragging.grabOffset.x,
+        info.group.position.y,
+        p.z + dragging.grabOffset.z
+      )
       st.selectionBox?.update()
     }
     const onPointerUp = () => {
-      if (dragging) {
-        const g = st.built?.furniture.get(dragging.id)
-        if (g && dragging.moved) {
-          useStore
-            .getState()
-            .updateFurniture(dragging.id, { x: snapTo(g.position.x, 1), y: snapTo(g.position.z, 1) })
+      if (dragging && st.built) {
+        const info = st.built.furniture.get(dragging.id)
+        if (info && dragging.moved) {
+          useStore.getState().updateFurniture(dragging.id, {
+            x: snapTo(info.group.position.x, 1),
+            y: snapTo(info.group.position.z, 1),
+          })
         }
         dragging = null
         controls.enabled = true
@@ -246,7 +267,6 @@ export default function Scene3D() {
     window.addEventListener('pointermove', onPointerMove)
     window.addEventListener('pointerup', onPointerUp)
 
-    // resize
     const ro = new ResizeObserver(() => {
       const w = mount.clientWidth
       const h = mount.clientHeight
@@ -256,7 +276,6 @@ export default function Scene3D() {
     })
     ro.observe(mount)
 
-    // render loop
     const loop = () => {
       st.raf = requestAnimationFrame(loop)
       controls.update()
@@ -264,7 +283,6 @@ export default function Scene3D() {
     }
     loop()
 
-    // expose recenter for the overlay button
     ;(mount as any).__recenter = () => {
       if (st.built) fitCamera(st.built.center, st.built.radius)
     }
@@ -283,20 +301,30 @@ export default function Scene3D() {
       mount.removeChild(renderer.domElement)
       stateRef.current = null
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (
     <div className="scene3d-wrap">
       <div ref={mountRef} className="scene3d-mount" />
+      {floorCount > 1 && (
+        <div className="floor-vis" role="toolbar" aria-label="Floor visibility">
+          <button className={visFloor === 'all' ? 'active' : ''} onClick={() => setVisFloor('all')}>
+            All
+          </button>
+          {Array.from({ length: floorCount }, (_, i) => (
+            <button key={i} className={visFloor === i ? 'active' : ''} onClick={() => setVisFloor(i)}>
+              {i + 1}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="canvas-hint scene3d-hint">
         Drag to orbit · scroll to zoom · click furniture to select, drag to move · edits in 2D
         regenerate this view automatically
       </div>
       <div className="zoom-controls">
-        <button
-          title="Recenter view"
-          onClick={() => (mountRef.current as any)?.__recenter?.()}
-        >
+        <button title="Recenter view" onClick={() => (mountRef.current as any)?.__recenter?.()}>
           ⌂
         </button>
       </div>

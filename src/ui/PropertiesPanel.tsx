@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { useStore } from '../model/store'
+import { stairSpecs, useActiveFloor, useStore } from '../model/store'
 import { catalogItem } from '../model/catalog'
 import { dist, fmtLenShort, norm, parseLen, scale, sub, add } from '../model/geometry'
-import type { OpeningType } from '../model/types'
+import { MAX_FLOORS, STORY_GAP, type OpeningType } from '../model/types'
 
 /** Text input that accepts measurements like 12'6", commits on Enter/blur. */
 function LenInput({
@@ -48,18 +48,35 @@ const OPENING_LABELS: Record<OpeningType, string> = {
 
 export default function PropertiesPanel() {
   const selection = useStore((s) => s.selection)
-  const plan = useStore((s) => s.plan)
+  const floor = useActiveFloor()
+  const activeFloor = useStore((s) => s.activeFloor)
+  const floorCount = useStore((s) => s.plan.floors.length)
   const st = useStore.getState()
 
   if (!selection) {
-    const wallFt = plan.walls.reduce((acc, w) => acc + dist(w.a, w.b), 0) / 12
+    const wallFt = floor.walls.reduce((acc, w) => acc + dist(w.a, w.b), 0) / 12
     return (
       <aside className="props">
-        <div className="props-header">Plan</div>
+        <div className="props-header">{floor.name}</div>
         <div className="props-body">
+          <LenInput
+            label="Story height"
+            value={floor.height}
+            onCommit={(v) => {
+              st.checkpoint()
+              const h = Math.min(240, Math.max(72, v))
+              st.updateFloor(activeFloor, { height: h })
+              // re-run staircases on this floor for the new rise
+              const rise = h + STORY_GAP
+              const specs = stairSpecs(rise)
+              for (const f of floor.furniture) {
+                if (f.kind === 'staircase') st.updateFurniture(f.id, { d: specs.run, h: rise })
+              }
+            }}
+          />
           <div className="props-stat">
             <span>Walls</span>
-            <b>{plan.walls.length}</b>
+            <b>{floor.walls.length}</b>
           </div>
           <div className="props-stat">
             <span>Total wall length</span>
@@ -67,15 +84,39 @@ export default function PropertiesPanel() {
           </div>
           <div className="props-stat">
             <span>Doors & windows</span>
-            <b>{plan.openings.length}</b>
+            <b>{floor.openings.length}</b>
           </div>
           <div className="props-stat">
             <span>Furniture</span>
-            <b>{plan.furniture.length}</b>
+            <b>{floor.furniture.length}</b>
           </div>
+          {floor.guides.length > 0 && (
+            <div className="props-stat">
+              <span>Measure marks</span>
+              <b>{floor.guides.length}</b>
+            </div>
+          )}
+          {floorCount < MAX_FLOORS && (
+            <button className="mini-btn" onClick={() => st.addFloor()}>
+              ＋ Add floor above
+            </button>
+          )}
+          {activeFloor > 0 && (
+            <button
+              className="danger-btn"
+              onClick={() => {
+                if (confirm(`Delete ${floor.name} and everything on it?`)) {
+                  st.deleteFloor(activeFloor)
+                }
+              }}
+            >
+              Delete {floor.name}
+            </button>
+          )}
           <p className="props-tip">
             Select anything on the canvas to edit its exact size here. Draw walls with{' '}
-            <kbd>W</kbd>, doors <kbd>D</kbd>, windows <kbd>N</kbd>.
+            <kbd>W</kbd>, doors <kbd>D</kbd>, windows <kbd>N</kbd>, marks <kbd>M</kbd>.
+            {activeFloor > 0 && ' The floor below shows in gray for alignment.'}
           </p>
         </div>
       </aside>
@@ -83,7 +124,7 @@ export default function PropertiesPanel() {
   }
 
   if (selection.kind === 'wall') {
-    const w = plan.walls.find((x) => x.id === selection.id)
+    const w = floor.walls.find((x) => x.id === selection.id)
     if (!w) return null
     return (
       <aside className="props">
@@ -144,7 +185,7 @@ export default function PropertiesPanel() {
   }
 
   if (selection.kind === 'opening') {
-    const o = plan.openings.find((x) => x.id === selection.id)
+    const o = floor.openings.find((x) => x.id === selection.id)
     if (!o) return null
     const isDoor = o.type !== 'window' && o.type !== 'opening'
     return (
@@ -212,9 +253,16 @@ export default function PropertiesPanel() {
   }
 
   if (selection.kind === 'furniture') {
-    const f = plan.furniture.find((x) => x.id === selection.id)
+    const f = floor.furniture.find((x) => x.id === selection.id)
     if (!f) return null
     const item = catalogItem(f.kind)
+    const isStair = f.kind === 'staircase'
+    const stairInfo = isStair
+      ? (() => {
+          const risers = Math.max(2, Math.ceil(f.h / 7.75))
+          return { risers, treads: risers - 1, riser: f.h / risers, tread: f.d / (risers - 1) }
+        })()
+      : null
     return (
       <aside className="props">
         <div className="props-header">{item.name}</div>
@@ -228,7 +276,7 @@ export default function PropertiesPanel() {
             }}
           />
           <LenInput
-            label="Depth"
+            label={isStair ? 'Run (depth)' : 'Depth'}
             value={f.d}
             onCommit={(v) => {
               st.checkpoint()
@@ -236,13 +284,20 @@ export default function PropertiesPanel() {
             }}
           />
           <LenInput
-            label="Height (3D)"
+            label={isStair ? 'Total rise' : 'Height (3D)'}
             value={f.h}
             onCommit={(v) => {
               st.checkpoint()
               st.updateFurniture(f.id, { h: v })
             }}
           />
+          {stairInfo && (
+            <p className="props-tip" style={{ marginTop: 0 }}>
+              {stairInfo.risers} risers @ {stairInfo.riser.toFixed(1)}" ·{' '}
+              {stairInfo.treads} treads @ {stairInfo.tread.toFixed(1)}". Sized for this story's
+              height — the floor above gets an opening automatically. Arrow points up.
+            </p>
+          )}
           <label className="prop-field">
             <span>Rotation</span>
             <div className="prop-row">
@@ -278,7 +333,7 @@ export default function PropertiesPanel() {
   }
 
   if (selection.kind === 'label') {
-    const l = plan.labels.find((x) => x.id === selection.id)
+    const l = floor.labels.find((x) => x.id === selection.id)
     if (!l) return null
     return (
       <aside className="props">
@@ -304,6 +359,28 @@ export default function PropertiesPanel() {
           </label>
           <button className="danger-btn" onClick={() => st.deleteSelected()}>
             Delete
+          </button>
+        </div>
+      </aside>
+    )
+  }
+
+  if (selection.kind === 'guide') {
+    const g = floor.guides.find((x) => x.id === selection.id)
+    if (!g) return null
+    return (
+      <aside className="props">
+        <div className="props-header">Measure mark</div>
+        <div className="props-body">
+          <p className="props-tip" style={{ marginTop: 0 }}>
+            Reference point at ({fmtLenShort(g.x)}, {fmtLenShort(g.y)}). Dotted lines show the
+            clear distance to nearby walls. Walls and other marks snap to it while drawing.
+          </p>
+          <button className="danger-btn" onClick={() => st.deleteSelected()}>
+            Delete mark
+          </button>
+          <button className="mini-btn" onClick={() => st.clearGuides()}>
+            Clear all marks on this floor
           </button>
         </div>
       </aside>

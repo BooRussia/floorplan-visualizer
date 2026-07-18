@@ -16,6 +16,13 @@ export interface CatalogCategory {
 
 export const CATALOG: CatalogCategory[] = [
   {
+    name: 'Structure',
+    items: [
+      // depth (run) and height are auto-computed from the floor's height when placed
+      { kind: 'staircase', name: 'Staircase', w: 36, d: 136, h: 106 },
+    ],
+  },
+  {
     name: 'Kitchen',
     items: [
       { kind: 'base-cabinet', name: 'Base cabinet', w: 36, d: 24, h: 36 },

@@ -165,6 +165,64 @@ export function toLocal(p: Pt, cx: number, cy: number, rotDeg: number): Pt {
   return rotatePt({ x: p.x - cx, y: p.y - cy }, -rotDeg)
 }
 
+// ---------- guide distance rays ----------
+
+export interface GuideRay {
+  /** unit direction of the ray */
+  dir: Pt
+  /** clear distance from the point to the wall face */
+  distance: number
+  /** point on the wall face where the ray lands */
+  hit: Pt
+}
+
+/**
+ * Cast axis-aligned rays (±x, ±y) from p and return the nearest wall hit in each
+ * direction, measured to the wall face (centerline minus half thickness).
+ */
+export function guideRays(p: Pt, walls: Wall[], maxDist = 720): GuideRay[] {
+  const dirs: Pt[] = [
+    { x: 1, y: 0 },
+    { x: -1, y: 0 },
+    { x: 0, y: 1 },
+    { x: 0, y: -1 },
+  ]
+  const out: GuideRay[] = []
+  for (const dir of dirs) {
+    let best = Infinity
+    let bestTh = 0
+    for (const w of walls) {
+      const samples = wallSamples(w, 4)
+      for (let i = 0; i < samples.length - 1; i++) {
+        const a = samples[i]
+        const b = samples[i + 1]
+        // ray p + t*dir  vs  segment a + u*(b-a)
+        const rx = dir.x
+        const ry = dir.y
+        const sx = b.x - a.x
+        const sy = b.y - a.y
+        const denom = rx * sy - ry * sx
+        if (Math.abs(denom) < 1e-9) continue
+        const t = ((a.x - p.x) * sy - (a.y - p.y) * sx) / denom
+        const u = ((a.x - p.x) * ry - (a.y - p.y) * rx) / denom
+        if (t > 0.5 && u >= 0 && u <= 1 && t < best) {
+          best = t
+          bestTh = w.thickness
+        }
+      }
+    }
+    if (best < maxDist) {
+      const distance = Math.max(0, best - bestTh / 2)
+      out.push({
+        dir,
+        distance,
+        hit: { x: p.x + dir.x * distance, y: p.y + dir.y * distance },
+      })
+    }
+  }
+  return out
+}
+
 // ---------- plan bounds ----------
 
 export function planBounds(pts: Pt[]): { min: Pt; max: Pt } | null {

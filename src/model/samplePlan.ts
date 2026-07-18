@@ -2,7 +2,13 @@ import type { Plan } from './types'
 
 // A ready-made 3-bed apartment, used on first launch and via the "Sample" button.
 export const SAMPLE_PLAN: Plan = {
-  walls: [
+  floors: [
+    {
+      id: 'floor1',
+      name: 'Floor 1',
+      height: 96,
+      guides: [],
+      walls: [
     { id: 'w1', a: { x: 0, y: 0 }, b: { x: 672, y: 0 }, thickness: 6, bulge: 0, height: 96 },
     { id: 'w2', a: { x: 672, y: 0 }, b: { x: 672, y: 480 }, thickness: 6, bulge: 0, height: 96 },
     { id: 'w3', a: { x: 672, y: 480 }, b: { x: 240, y: 480 }, thickness: 6, bulge: 0, height: 96 },
@@ -65,11 +71,13 @@ export const SAMPLE_PLAN: Plan = {
     { id: 'f36', kind: 'bar-stool', x: 430, y: 428, rot: 0, w: 16, d: 16, h: 30 },
     { id: 'f37', kind: 'bar-stool', x: 470, y: 428, rot: 0, w: 16, d: 16, h: 30 },
   ],
-  labels: [
-    { id: 'l1', x: 108, y: 140, text: 'Bedroom', size: 10 },
-    { id: 'l2', x: 324, y: 140, text: 'Bedroom', size: 10 },
-    { id: 'l3', x: 108, y: 268, text: 'Bathroom', size: 9 },
-    { id: 'l4', x: 555, y: 215, text: 'Living Room', size: 10 },
-    { id: 'l5', x: 560, y: 395, text: 'Kitchen', size: 10 },
+      labels: [
+        { id: 'l1', x: 108, y: 140, text: 'Bedroom', size: 10 },
+        { id: 'l2', x: 324, y: 140, text: 'Bedroom', size: 10 },
+        { id: 'l3', x: 108, y: 268, text: 'Bathroom', size: 9 },
+        { id: 'l4', x: 555, y: 215, text: 'Living Room', size: 10 },
+        { id: 'l5', x: 560, y: 395, text: 'Kitchen', size: 10 },
+      ],
+    },
   ],
 }

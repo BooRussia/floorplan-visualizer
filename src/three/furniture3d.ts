@@ -404,9 +404,43 @@ function bathtub(g: G, w: number, d: number, h: number) {
   cyl(g, MAT.steel, 0.5, 0.5, 6, -w / 2 + 4, h, 0)
 }
 
+// ---------- structure ----------
+
+function staircase(g: G, w: number, d: number, h: number) {
+  // solid stepped mass: risers ≤ 7¾", ascending toward -z (the 2D arrow direction)
+  const risers = Math.max(2, Math.ceil(h / 7.75))
+  const rh = h / risers
+  const td = d / (risers - 1)
+  for (let i = 0; i < risers - 1; i++) {
+    const stepH = rh * (i + 1)
+    const z = d / 2 - td * i - td / 2
+    box(g, MAT.wood, w - 3, stepH, td + 0.05, 0, 0, z)
+  }
+  // side stringers
+  for (const sx of [-w / 2 + 1.4, w / 2 - 1.4]) {
+    for (let i = 0; i < risers - 1; i++) {
+      const stepH = rh * (i + 1)
+      const z = d / 2 - td * i - td / 2
+      box(g, MAT.white, 2.6, stepH + 1, td + 0.05, sx, 0, z)
+    }
+  }
+  // simple handrail on the right side
+  const railH = 34
+  for (let i = 0; i < risers - 1; i += 2) {
+    const z = d / 2 - td * i - td / 2
+    cyl(g, MAT.steel, 0.5, 0.5, railH, w / 2 - 1.4, rh * (i + 1), z, 8)
+  }
+  const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, Math.hypot(d, h) * 0.98, 8), MAT.wood)
+  rail.position.set(w / 2 - 1.4, h / 2 + railH, 0)
+  rail.rotation.x = -Math.atan2(d, h)
+  rail.castShadow = true
+  g.add(rail)
+}
+
 // ---------- registry ----------
 
 const builders: Record<string, (g: G, w: number, d: number, h: number) => void> = {
+  staircase,
   sofa: (g, w, d, h) => sofa(g, w, d, h, Math.max(2, Math.round(w / 28))),
   loveseat: (g, w, d, h) => sofa(g, w, d, h, 2),
   armchair,
