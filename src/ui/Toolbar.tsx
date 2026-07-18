@@ -45,7 +45,8 @@ function ToolButton({
   )
 }
 
-/** Split button with a dropdown of variants. */
+/** Split button with a dropdown of variants. The menu renders position:fixed so the
+ * toolbar's overflow clipping can't hide it. */
 function DropTool({
   active,
   label,
@@ -64,17 +65,32 @@ function DropTool({
   icon?: React.ReactNode
 }) {
   const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState({ x: 0, y: 0 })
+  const wrapRef = useRef<HTMLDivElement>(null)
+
+  const toggle = () => {
+    if (!open && wrapRef.current) {
+      const r = wrapRef.current.getBoundingClientRect()
+      setPos({ x: r.left, y: r.bottom + 4 })
+    }
+    setOpen(!open)
+  }
+
   return (
-    <div className="tb-split">
+    <div className="tb-split" ref={wrapRef}>
       <ToolButton active={active} onClick={onMain} title={title}>
         {icon}
         {label}
       </ToolButton>
-      <button className="tb-caret" onClick={() => setOpen(!open)} title={title}>
+      <button className="tb-caret" onClick={toggle} title={title}>
         ▾
       </button>
       {open && (
-        <div className="tb-menu" onPointerLeave={() => setOpen(false)}>
+        <div
+          className="tb-menu"
+          style={{ left: pos.x, top: pos.y }}
+          onPointerLeave={() => setOpen(false)}
+        >
           {options.map((o) => (
             <button
               key={o.key}

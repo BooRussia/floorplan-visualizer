@@ -215,9 +215,7 @@ body {
 }
 
 .tb-menu {
-  position: absolute;
-  top: 38px;
-  left: 0;
+  position: fixed;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -226,7 +224,7 @@ body {
   display: flex;
   flex-direction: column;
   min-width: 150px;
-  z-index: 50;
+  z-index: 100;
 }
 
 .tb-menu button {
