@@ -48,7 +48,9 @@ export default function Scene3D() {
     mount.appendChild(renderer.domElement)
 
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color('#eceef1')
+    scene.background = new THREE.Color(
+      useStore.getState().theme === 'dark' ? '#1a1c20' : '#eceef1'
+    )
 
     const camera = new THREE.PerspectiveCamera(38, mount.clientWidth / mount.clientHeight, 2, 20000)
 
@@ -71,10 +73,11 @@ export default function Scene3D() {
     fill.position.set(-600, 500, 500)
     scene.add(fill)
 
-    const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(40000, 40000),
-      new THREE.MeshStandardMaterial({ color: '#e6e7ea', roughness: 0.96 })
-    )
+    const groundMat = new THREE.MeshStandardMaterial({
+      color: useStore.getState().theme === 'dark' ? '#22242a' : '#e6e7ea',
+      roughness: 0.96,
+    })
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(40000, 40000), groundMat)
     ground.rotation.x = -Math.PI / 2
     ground.position.y = -4.2
     ground.receiveShadow = true
@@ -156,6 +159,7 @@ export default function Scene3D() {
     let timer: ReturnType<typeof setTimeout> | undefined
     let lastProject = useStore.getState().project
     let lastSel = useStore.getState().selection
+    let lastTheme = useStore.getState().theme
     const unsub = useStore.subscribe((s) => {
       if (s.project !== lastProject) {
         lastProject = s.project
@@ -165,6 +169,11 @@ export default function Scene3D() {
       if (s.selection !== lastSel) {
         lastSel = s.selection
         syncSelectionBox()
+      }
+      if (s.theme !== lastTheme) {
+        lastTheme = s.theme
+        ;(scene.background as THREE.Color).set(s.theme === 'dark' ? '#1a1c20' : '#eceef1')
+        groundMat.color.set(s.theme === 'dark' ? '#22242a' : '#e6e7ea')
       }
     })
 

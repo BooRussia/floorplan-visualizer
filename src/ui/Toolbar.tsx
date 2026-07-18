@@ -122,6 +122,8 @@ export default function Toolbar() {
   const canUndo = useStore((s) => s.past.length > 0)
   const canRedo = useStore((s) => s.future.length > 0)
   const hasGuides = useActiveFloor().guides.length > 0
+  const snapOn = useStore((s) => s.snapOn)
+  const theme = useStore((s) => s.theme)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const isPlot = mode.scope === 'plot'
@@ -343,6 +345,27 @@ export default function Toolbar() {
             <ToolButton active={showDims} onClick={() => setShowDims(!showDims)} title="Show wall dimensions">
               ⇤⇥
             </ToolButton>
+            <ToolButton
+              active={snapOn}
+              onClick={() => useStore.getState().setSnapOn(!snapOn)}
+              title={
+                snapOn
+                  ? 'Snapping ON — endpoints, marks & 45° angles (S toggles, hold Alt for free angles)'
+                  : 'Snapping OFF — free drawing on the 1" grid (S toggles, hold Alt to snap)'
+              }
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path
+                  d="M4 2v6a4 4 0 0 0 8 0V2"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  fill="none"
+                />
+                <path d="M4 2v3M12 2v3" stroke="currentColor" strokeWidth="3.4" />
+                {!snapOn && <path d="M2 14L14 2" stroke="currentColor" strokeWidth="1.4" />}
+              </svg>
+              Snap
+            </ToolButton>
           </div>
 
           <div className="tb-group tb-file">
@@ -386,6 +409,15 @@ export default function Toolbar() {
       )}
 
       <div className="tb-spacer" />
+
+      <button
+        className="tb-btn"
+        onClick={() => useStore.getState().setTheme(theme === 'dark' ? 'light' : 'dark')}
+        title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+        style={{ fontSize: 15 }}
+      >
+        {theme === 'dark' ? '☀️' : '🌙'}
+      </button>
 
       <button
         className="tb-primary"

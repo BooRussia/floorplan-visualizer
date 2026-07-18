@@ -45,12 +45,17 @@ interface StoreState {
   tool: Tool
   view: '2d' | '3d'
   showDims: boolean
+  /** magnet: endpoint/guide/angle snapping while drawing (S toggles; Alt overrides) */
+  snapOn: boolean
+  theme: 'light' | 'dark'
   past: Project[]
   future: Project[]
 
   setTool: (t: Tool) => void
   setView: (v: '2d' | '3d') => void
   setShowDims: (b: boolean) => void
+  setSnapOn: (b: boolean) => void
+  setTheme: (t: 'light' | 'dark') => void
   select: (s: Selection) => void
 
   enterBuilding: (index: number) => void
@@ -143,12 +148,20 @@ export const useStore = create<StoreState>((set, get) => {
     tool: { type: 'select' },
     view: '2d',
     showDims: true,
+    snapOn: true,
+    theme: (localStorage.getItem('fv-theme') === 'dark' ? 'dark' : 'light') as 'light' | 'dark',
     past: [],
     future: [],
 
     setTool: (tool) => set({ tool, selection: null }),
     setView: (view) => set({ view }),
     setShowDims: (showDims) => set({ showDims }),
+    setSnapOn: (snapOn) => set({ snapOn }),
+    setTheme: (theme) => {
+      localStorage.setItem('fv-theme', theme)
+      document.documentElement.dataset.theme = theme
+      set({ theme })
+    },
     select: (selection) => set({ selection }),
 
     enterBuilding: (index) =>
@@ -450,6 +463,9 @@ export const useStore = create<StoreState>((set, get) => {
 
 /** Convenience selector for the floor being edited (site layer in plot mode). */
 export const useActiveFloor = () => useStore((s) => floorFor(s))
+
+// apply the persisted theme immediately
+document.documentElement.dataset.theme = useStore.getState().theme
 
 // Debug/scripting access from the browser console (dev only)
 if (import.meta.env.DEV) (globalThis as any).__store = useStore

@@ -5,15 +5,15 @@ import React from 'react'
 // Strokes use non-scaling-stroke so linework stays crisp at any zoom.
 
 const S: React.CSSProperties = {}
-const stroke = '#3f3f46'
+const stroke = 'var(--glyph-stroke)'
 const thin = {
   stroke,
   strokeWidth: 1.1,
   vectorEffect: 'non-scaling-stroke' as const,
-  fill: '#ffffff',
+  fill: 'var(--glyph-fill)',
 }
 const thinNoFill = { ...thin, fill: 'none' }
-const softFill = { ...thin, fill: '#f4f4f5' }
+const softFill = { ...thin, fill: 'var(--glyph-soft)' }
 
 function Rect({ w, d, r = 0, style = thin as React.CSSProperties, inset = 0 }: {
   w: number; d: number; r?: number; style?: React.CSSProperties; inset?: number
@@ -319,7 +319,7 @@ export function Glyph({ kind, w, d }: { kind: string; w: number; d: number }) {
     case 'rug':
       return (
         <g>
-          <Rect w={w} d={d} r={1} style={{ ...thin, fill: '#fafafa' }} />
+          <Rect w={w} d={d} r={1} style={softFill} />
           <Rect w={w} d={d} inset={4} style={thinNoFill} />
         </g>
       )

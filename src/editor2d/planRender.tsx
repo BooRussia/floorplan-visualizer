@@ -11,9 +11,9 @@ import {
   wallTangentAt,
 } from '../model/geometry'
 
-export const WALL_COLOR = '#1c1c21'
+export const WALL_COLOR = 'var(--wall-color)'
 export const ACCENT = '#2563eb'
-export const BG = '#f7f7f8'
+export const BG = 'var(--canvas-bg)'
 
 export function wallPathD(w: Wall): string {
   if (!w.bulge) return `M ${w.a.x} ${w.a.y} L ${w.b.x} ${w.b.y}`
@@ -25,7 +25,7 @@ export function WallShape({ w, selected }: { w: Wall; selected: boolean }) {
   if (w.fence) {
     const L = wallLength(w)
     const posts = Math.max(2, Math.round(L / 96) + 1)
-    const color = selected ? ACCENT : '#52525b'
+    const color = selected ? ACCENT : 'var(--fence-color)'
     return (
       <>
         <path
@@ -85,7 +85,7 @@ export function WallDim({ w, fontWorld, selected }: { w: Wall; fontWorld: number
       x={px}
       y={py}
       fontSize={fontWorld}
-      fill={selected ? ACCENT : '#71717a'}
+      fill={selected ? ACCENT : 'var(--dim-color)'}
       fontFamily="Inter, system-ui, sans-serif"
       fontWeight={selected ? 600 : 500}
       textAnchor="middle"
@@ -99,6 +99,7 @@ export function WallDim({ w, fontWorld, selected }: { w: Wall; fontWorld: number
 }
 
 const jamb = { stroke: WALL_COLOR, strokeWidth: 1.2, vectorEffect: 'non-scaling-stroke' as const }
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const leafStyle = { stroke: WALL_COLOR, strokeWidth: 1.4, vectorEffect: 'non-scaling-stroke' as const, fill: 'none' }
 const arcStyle = {
   stroke: '#8b8b92',
@@ -135,7 +136,7 @@ export function OpeningGlyph({
     case 'window':
       inner = (
         <>
-          <rect x={-hw} y={-th / 2} width={o.width} height={th} fill="#ffffff" style={jamb} />
+          <rect x={-hw} y={-th / 2} width={o.width} height={th} fill="var(--glyph-fill)" style={jamb} />
           <line x1={-hw} y1={0} x2={hw} y2={0} style={jamb} />
         </>
       )
@@ -169,8 +170,8 @@ export function OpeningGlyph({
       const t3 = Math.max(1.6, th / 3)
       inner = (
         <g transform={`scale(${sx} ${sy})`}>
-          <rect x={-hw} y={-t3 / 2 - t3 * 0.6} width={o.width * 0.55} height={t3} fill="#ffffff" style={jamb} />
-          <rect x={hw - o.width * 0.55} y={-t3 / 2 + t3 * 0.6} width={o.width * 0.55} height={t3} fill="#ffffff" style={jamb} />
+          <rect x={-hw} y={-t3 / 2 - t3 * 0.6} width={o.width * 0.55} height={t3} fill="var(--glyph-fill)" style={jamb} />
+          <rect x={hw - o.width * 0.55} y={-t3 / 2 + t3 * 0.6} width={o.width * 0.55} height={t3} fill="var(--glyph-fill)" style={jamb} />
           <line x1={-hw + 3} y1={-t3 * 1.6} x2={-hw + o.width * 0.4} y2={-t3 * 1.6} style={arcStyle} />
         </g>
       )
@@ -203,7 +204,7 @@ export function OpeningGlyph({
       const trackDepth = Math.min(o.height ?? 84, o.width * 0.6)
       inner = (
         <g transform={`scale(1 ${sy})`}>
-          <rect x={-hw} y={-2} width={o.width} height={4} fill="#ffffff" style={jamb} />
+          <rect x={-hw} y={-2} width={o.width} height={4} fill="var(--glyph-fill)" style={jamb} />
           <line x1={-hw} y1={0} x2={hw} y2={0} style={arcStyle} />
           <line
             x1={-hw + 2}

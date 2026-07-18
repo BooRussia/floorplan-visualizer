@@ -29,7 +29,7 @@ import { ACCENT, BG, OpeningGlyph, OpeningHit, WallDim, WallShape, wallPathD } f
 
 const WALL_THICKNESS = 5
 const MEASURE_COLOR = '#0e9488'
-const PLOT_LINE = '#5f7a4e'
+const PLOT_LINE = 'var(--plot-line)'
 
 export const FENCE_HEIGHTS: Record<FenceType, number> = {
   privacy: 72,
@@ -259,6 +259,9 @@ export default function Editor2D() {
   // ---------- snapping ----------
   const snapForDraw = useCallback(
     (raw: Pt, from: Pt | null, altKey: boolean): { p: Pt; mark: SnapMark | null } => {
+      // S toggles the magnet; holding Alt momentarily inverts it
+      const magnet = useStore.getState().snapOn ? !altKey : altKey
+      if (!magnet) return { p: snapPoint(raw, 1), mark: null }
       const floor = fl()
       const ppi = viewRef.current.ppi
       // 0) measurement guide points
@@ -299,7 +302,7 @@ export default function Editor2D() {
         return { p, mark: { p: bestWP, along: { d0, d1: L - d0 } } }
       }
       // 3) angle + length snap from previous point
-      if (from && !altKey) {
+      if (from) {
         const snapped = snapAngle(from, raw)
         const d = dist(from, snapped)
         const rounded = snapTo(d, 1)
@@ -802,6 +805,9 @@ export default function Editor2D() {
         case 'p':
           if (st.mode.scope === 'building') st.setTool({ type: 'paint', material: 'tile' })
           break
+        case 's':
+          st.setSnapOn(!st.snapOn)
+          break
         case 'd':
           st.setTool({ type: 'opening', opening: 'door' })
           break
@@ -995,13 +1001,13 @@ export default function Editor2D() {
       >
         <defs>
           <pattern id="gridMinor" width={6} height={6} patternUnits="userSpaceOnUse">
-            <path d="M 6 0 L 0 0 0 6" fill="none" stroke="#ececee" strokeWidth={0.6} />
+            <path d="M 6 0 L 0 0 0 6" fill="none" stroke="var(--grid-minor)" strokeWidth={0.6} />
           </pattern>
           <pattern id="gridMajor" width={12} height={12} patternUnits="userSpaceOnUse">
-            <path d="M 12 0 L 0 0 0 12" fill="none" stroke="#e2e2e6" strokeWidth={0.8} />
+            <path d="M 12 0 L 0 0 0 12" fill="none" stroke="var(--grid-major)" strokeWidth={0.8} />
           </pattern>
           <pattern id="gridBig" width={60} height={60} patternUnits="userSpaceOnUse">
-            <path d="M 60 0 L 0 0 0 60" fill="none" stroke="#dcdce0" strokeWidth={1} />
+            <path d="M 60 0 L 0 0 0 60" fill="none" stroke="var(--grid-big)" strokeWidth={1} />
           </pattern>
         </defs>
         <rect x={minX} y={minY} width={pw / view.ppi} height={ph / view.ppi} fill={BG} />
@@ -1016,7 +1022,7 @@ export default function Editor2D() {
         {/* plot boundary (property line) */}
         {isPlot && (
           <>
-            <rect x={0} y={0} width={plotW} height={plotD} fill="#f0f4ec" />
+            <rect x={0} y={0} width={plotW} height={plotD} fill="var(--plot-fill)" />
             <rect
               x={0}
               y={0}
@@ -1282,7 +1288,7 @@ export default function Editor2D() {
                   y={bb.min.y}
                   width={bb.max.x - bb.min.x}
                   height={bb.max.y - bb.min.y}
-                  fill="#ffffff"
+                  fill="var(--canvas-bg)"
                   fillOpacity={0.85}
                   stroke="none"
                 />
@@ -1295,7 +1301,7 @@ export default function Editor2D() {
                   fontSize={Math.max(14, 16 / view.ppi)}
                   fontFamily="Inter, system-ui, sans-serif"
                   fontWeight={700}
-                  fill={sel ? ACCENT : '#3f3f46'}
+                  fill={sel ? ACCENT : 'var(--glyph-stroke)'}
                   textAnchor="middle"
                   dominantBaseline="middle"
                   style={{ userSelect: 'none', pointerEvents: 'none' }}
@@ -1411,7 +1417,7 @@ export default function Editor2D() {
             fontSize={l.size}
             fontFamily="Inter, system-ui, sans-serif"
             fontWeight={600}
-            fill="#3f3f46"
+            fill="var(--glyph-stroke)"
             textAnchor="middle"
             dominantBaseline="middle"
             style={{ cursor: tool.type === 'select' ? 'move' : undefined, userSelect: 'none' }}
