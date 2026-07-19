@@ -14,6 +14,7 @@ interface ThreeState {
   selectionBox: THREE.BoxHelper | null
   sun: THREE.DirectionalLight
   raf: number
+  frameVisible?: () => void
 }
 
 export default function Scene3D() {
@@ -27,19 +28,34 @@ export default function Scene3D() {
       ? s.project.buildings[focus.index]?.floors.length ?? 1
       : Math.max(1, ...s.project.buildings.map((b) => b.floors.length))
   )
-  const [visFloor, setVisFloor] = useState<'all' | number>('all')
+  // Multi-story buildings default to showing ONLY the top floor (lower floors
+  // hidden) so you see it as a clean single-story plan; 'all' stacks them.
+  const topFloor = Math.max(0, floorCount - 1)
+  const [visFloor, setVisFloor] = useState<'all' | number>(
+    focus.scope === 'building' && floorCount > 1 ? topFloor : 'all'
+  )
   const visRef = useRef(visFloor)
   visRef.current = visFloor
 
-  // apply floor visibility to the built groups
-  const applyVisibility = () => {
+  // apply floor visibility: 'all' stacks floors at their real elevation; a single
+  // floor is isolated AND dropped to ground level so it doesn't float, then reframed.
+  const applyVisibility = (reframe = true) => {
     const st = stateRef.current
     if (!st?.built) return
+    const sel = visRef.current
     for (const fg of st.built.floorGroups) {
-      fg.group.visible = visRef.current === 'all' || visRef.current === fg.floor
+      if (sel === 'all') {
+        fg.group.visible = true
+        fg.group.position.y = fg.baseY
+      } else {
+        fg.group.visible = fg.floor === sel
+        fg.group.position.y = fg.floor === sel ? 0 : fg.baseY
+      }
     }
+    st.selectionBox?.update()
+    if (reframe && st.frameVisible) st.frameVisible()
   }
-  useEffect(applyVisibility, [visFloor])
+  useEffect(() => applyVisibility(true), [visFloor])
 
   useEffect(() => {
     const mount = mountRef.current!
@@ -117,9 +133,37 @@ export default function Scene3D() {
         center.y + distance * Math.sin(el),
         center.z + distance * Math.cos(el) * Math.sin(az)
       )
-      controls.target.copy(center).setY(Math.max(20, center.y * 0.85))
+      controls.target.copy(center).setY(Math.max(20, center.y * 0.6))
       controls.update()
     }
+
+    // Frame whatever floor groups are currently visible (respects isolate + ground).
+    const frameVisible = () => {
+      if (!st.built) return
+      if (focus.scope !== 'building') {
+        fitCamera(st.built.center, st.built.radius)
+        return
+      }
+      st.built.group.updateMatrixWorld(true)
+      const box = new THREE.Box3()
+      let any = false
+      for (const fg of st.built.floorGroups) {
+        if (!fg.group.visible) continue
+        box.expandByObject(fg.group)
+        any = true
+      }
+      if (!any || box.isEmpty()) {
+        fitCamera(st.built.center, st.built.radius)
+        return
+      }
+      const center = new THREE.Vector3()
+      const size = new THREE.Vector3()
+      box.getCenter(center)
+      box.getSize(size)
+      const radius = Math.max(size.x, size.z, size.y * 1.1, 120) / 2
+      fitCamera(center, radius)
+    }
+    st.frameVisible = frameVisible
 
     const clearSelectionBox = () => {
       if (st.selectionBox) {
@@ -150,7 +194,6 @@ export default function Scene3D() {
       clearSelectionBox()
       st.built = buildProject(project, focus)
       scene.add(st.built.group)
-      applyVisibility()
       const { center, radius } = st.built
       sun.position.set(center.x + radius * 1.1, center.y + radius * 2.2, center.z + radius * 0.7)
       sun.target.position.copy(center)
@@ -163,7 +206,7 @@ export default function Scene3D() {
       cam.bottom = -r
       cam.far = radius * 8
       cam.updateProjectionMatrix()
-      if (fit) fitCamera(center, radius)
+      applyVisibility(fit)
       syncSelectionBox()
     }
 
@@ -323,7 +366,7 @@ export default function Scene3D() {
     loop()
 
     ;(mount as any).__recenter = () => {
-      if (st.built) fitCamera(st.built.center, st.built.radius)
+      st.frameVisible?.()
     }
 
     return () => {
@@ -348,14 +391,23 @@ export default function Scene3D() {
       <div ref={mountRef} className="scene3d-mount" />
       {floorCount > 1 && (
         <div className="floor-vis" role="toolbar" aria-label="Floor visibility">
-          <button className={visFloor === 'all' ? 'active' : ''} onClick={() => setVisFloor('all')}>
-            All
-          </button>
-          {Array.from({ length: floorCount }, (_, i) => (
-            <button key={i} className={visFloor === i ? 'active' : ''} onClick={() => setVisFloor(i)}>
-              {i + 1}
+          {Array.from({ length: floorCount }, (_, i) => floorCount - 1 - i).map((i) => (
+            <button
+              key={i}
+              className={visFloor === i ? 'active' : ''}
+              onClick={() => setVisFloor(i)}
+              title={`Show floor ${i + 1} only`}
+            >
+              Floor {i + 1}
             </button>
           ))}
+          <button
+            className={visFloor === 'all' ? 'active' : ''}
+            onClick={() => setVisFloor('all')}
+            title="Stack all floors"
+          >
+            All
+          </button>
         </div>
       )}
       <div className="canvas-hint scene3d-hint">

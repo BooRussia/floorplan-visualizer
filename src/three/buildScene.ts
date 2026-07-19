@@ -37,7 +37,7 @@ export interface BuiltFurniture {
 export interface BuiltProject {
   group: THREE.Group
   /** per-story groups across all buildings, for the visibility switcher */
-  floorGroups: { floor: number; group: THREE.Group }[]
+  floorGroups: { floor: number; group: THREE.Group; baseY: number }[]
   furniture: Map<string, BuiltFurniture>
   center: THREE.Vector3
   radius: number
@@ -747,7 +747,7 @@ function buildBuilding(
   b: Building,
   index: number,
   furniture: Map<string, BuiltFurniture>,
-  floorGroups: { floor: number; group: THREE.Group }[],
+  floorGroups: { floor: number; group: THREE.Group; baseY: number }[],
   enclosed: boolean
 ): THREE.Group {
   const bg = new THREE.Group()
@@ -782,7 +782,7 @@ function buildBuilding(
     }
 
     bg.add(fg)
-    floorGroups.push({ floor: k, group: fg })
+    floorGroups.push({ floor: k, group: fg, baseY: elevation })
     elevation += floor.height + STORY_GAP
   })
   return bg
@@ -795,7 +795,7 @@ function buildBuilding(
  */
 export function buildProject(project: Project, focus: EditMode): BuiltProject {
   const group = new THREE.Group()
-  const floorGroups: { floor: number; group: THREE.Group }[] = []
+  const floorGroups: { floor: number; group: THREE.Group; baseY: number }[] = []
   const furniture = new Map<string, BuiltFurniture>()
 
   if (focus.scope === 'building') {
