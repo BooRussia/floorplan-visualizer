@@ -100,16 +100,24 @@ export default function Scene3D() {
     }
     stateRef.current = st
 
+    // steeper angle for taller (multi-story) buildings so you can see down into
+    // the open dollhouse floors instead of the top floor's walls hiding its floor
+    const focusFloors =
+      focus.scope === 'building'
+        ? useStore.getState().project.buildings[focus.index]?.floors.length ?? 1
+        : 1
+    const elevationDeg = focus.scope === 'building' ? Math.min(56, 30 + focusFloors * 8) : 38
+
     const fitCamera = (center: THREE.Vector3, radius: number) => {
-      const distance = Math.max(radius * 2.6, 200)
+      const distance = Math.max(radius * 2.9, 200)
       const az = THREE.MathUtils.degToRad(62)
-      const el = THREE.MathUtils.degToRad(38)
+      const el = THREE.MathUtils.degToRad(elevationDeg)
       camera.position.set(
         center.x + distance * Math.cos(el) * Math.cos(az),
         center.y + distance * Math.sin(el),
         center.z + distance * Math.cos(el) * Math.sin(az)
       )
-      controls.target.copy(center).setY(Math.max(20, center.y * 0.8))
+      controls.target.copy(center).setY(Math.max(20, center.y * 0.85))
       controls.update()
     }
 

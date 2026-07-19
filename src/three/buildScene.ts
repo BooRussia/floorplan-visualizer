@@ -810,7 +810,8 @@ export function buildProject(project: Project, focus: EditMode): BuiltProject {
       bbox.getCenter(center)
       bbox.getSize(size)
     }
-    const radius = Math.max(size.x, size.z, 120) / 2
+    // include height so tall (multi-story) buildings are framed, not clipped
+    const radius = Math.max(size.x, size.z, size.y * 1.1, 120) / 2
     return { group, floorGroups, furniture, center, radius }
   }
 
