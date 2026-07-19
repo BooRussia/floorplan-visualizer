@@ -276,19 +276,32 @@ export default function PropertiesPanel() {
                 <option value="flat">Flat</option>
               </select>
               {b.roof.style !== 'flat' && (
-                <select
-                  value={String(b.roof.pitch)}
-                  onChange={(e) => {
-                    st.checkpoint()
-                    st.updateBuilding(b.id, { roof: { ...b.roof, pitch: Number(e.target.value) } })
-                  }}
-                >
-                  {[2, 3, 4, 5, 6, 7, 8, 9, 10, 12].map((p) => (
-                    <option key={p} value={p}>
-                      {p}:12
-                    </option>
-                  ))}
-                </select>
+                <>
+                  <select
+                    value={String(b.roof.pitch)}
+                    onChange={(e) => {
+                      st.checkpoint()
+                      st.updateBuilding(b.id, { roof: { ...b.roof, pitch: Number(e.target.value) } })
+                    }}
+                  >
+                    {[2, 3, 4, 5, 6, 7, 8, 9, 10, 12].map((p) => (
+                      <option key={p} value={p}>
+                        {p}:12
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={b.roof.ridge ?? 'auto'}
+                    onChange={(e) => {
+                      st.checkpoint()
+                      st.updateBuilding(b.id, { roof: { ...b.roof, ridge: e.target.value as any } })
+                    }}
+                  >
+                    <option value="auto">Ridge: auto</option>
+                    <option value="ew">Ridge ↔</option>
+                    <option value="ns">Ridge ↕</option>
+                  </select>
+                </>
               )}
               <select
                 value={b.roof.material}

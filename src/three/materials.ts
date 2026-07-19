@@ -304,6 +304,9 @@ export const MAT = {
 /** Floor material for painted rooms. */
 export function roomFloorMaterial(material: string): THREE.MeshStandardMaterial {
   switch (material) {
+    case '__deck':
+      // flat roof-deck surface over lower-story areas not enclosed by this story
+      return new THREE.MeshStandardMaterial({ color: '#c9cacd', roughness: 0.92 })
     case 'tile':
       return new THREE.MeshStandardMaterial({ map: getTileTexture(), roughness: 0.35 })
     case 'carpet':

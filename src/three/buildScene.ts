@@ -426,7 +426,7 @@ function buildWall(
 ) {
   const H = w.height
   const extended = !!extendTo && w.height >= extendTo.ifAtLeast - 0.5
-  const top = extended ? extendTo!.to : H
+  const top = extended ? Math.max(H, extendTo!.to) : H
   const th = w.thickness
   const ext = th / 2 // match the 2D square line caps so corners close
 
@@ -502,38 +502,47 @@ interface FloorRaster {
   enclosed: boolean
 }
 
-function rasterizeFloor(walls: Wall[], extraPts: Pt[]): FloorRaster | null {
-  const pts: Pt[] = []
-  for (const w of walls) pts.push(...wallSamples(w, 12))
-  if (!pts.length) pts.push(...extraPts)
-  if (!pts.length) return null
+function rasterizeFloor(
+  walls: Wall[],
+  extraPts: Pt[],
+  grid?: { CELL: number; ox: number; oy: number; W: number; H: number }
+): FloorRaster | null {
+  let CELL: number, ox: number, oy: number, W: number, H: number
+  if (grid) {
+    ;({ CELL, ox, oy, W, H } = grid)
+  } else {
+    const pts: Pt[] = []
+    for (const w of walls) pts.push(...wallSamples(w, 12))
+    if (!pts.length) pts.push(...extraPts)
+    if (!pts.length) return null
 
-  let minX = Infinity,
-    minY = Infinity,
-    maxX = -Infinity,
-    maxY = -Infinity
-  for (const p of pts) {
-    minX = Math.min(minX, p.x)
-    minY = Math.min(minY, p.y)
-    maxX = Math.max(maxX, p.x)
-    maxY = Math.max(maxY, p.y)
-  }
-  const PAD = 3
-  // adaptive resolution: grow the cell size for huge plans instead of bailing out
-  let CELL = 3
-  let ox = 0,
-    oy = 0,
-    W = 0,
+    let minX = Infinity,
+      minY = Infinity,
+      maxX = -Infinity,
+      maxY = -Infinity
+    for (const p of pts) {
+      minX = Math.min(minX, p.x)
+      minY = Math.min(minY, p.y)
+      maxX = Math.max(maxX, p.x)
+      maxY = Math.max(maxY, p.y)
+    }
+    const PAD = 3
+    // adaptive resolution: grow the cell size for huge plans instead of bailing out
+    CELL = 3
+    ox = 0
+    oy = 0
+    W = 0
     H = 0
-  for (;;) {
-    ox = minX - PAD * CELL
-    oy = minY - PAD * CELL
-    W = Math.ceil((maxX - ox + PAD * CELL) / CELL) + 1
-    H = Math.ceil((maxY - oy + PAD * CELL) / CELL) + 1
-    if (W * H <= 600_000 || CELL >= 24) break
-    CELL *= 2
+    for (;;) {
+      ox = minX - PAD * CELL
+      oy = minY - PAD * CELL
+      W = Math.ceil((maxX - ox + PAD * CELL) / CELL) + 1
+      H = Math.ceil((maxY - oy + PAD * CELL) / CELL) + 1
+      if (W * H <= 600_000 || CELL >= 24) break
+      CELL *= 2
+    }
+    if (W * H > 2_000_000) return null // pathological (miles-wide bounds)
   }
-  if (W * H > 2_000_000) return null // pathological (miles-wide bounds)
 
   const solid = new Uint8Array(W * H)
   const idx = (cx: number, cy: number) => cy * W + cx
@@ -639,6 +648,7 @@ function buildFloorSurface(
   level: number,
   holes: Furniture[],
   raster: FloorRaster,
+  rooms: FloorRaster | null,
   roofY?: number
 ) {
   const { CELL, ox, oy, W, H, solid, outside, region, enclosed } = raster
@@ -650,10 +660,23 @@ function buildFloorSurface(
     y: oy + cy * CELL + CELL / 2,
   })
 
-  // paint seeds -> region materials
   let regionCount = 0
   for (let i = 0; i < W * H; i++) if (region[i] >= regionCount) regionCount = region[i] + 1
-  const regionMaterial: string[] = new Array(regionCount).fill('wood')
+
+  // Default material per region: on upper stories, regions with no cell sealed by
+  // this story's OWN walls read as flat deck/roof; rooms default to wood.
+  const useRooms = level > 0 && rooms != null && rooms.enclosed
+  const regionMaterial: string[] = new Array(regionCount).fill(
+    useRooms ? '__deck' : 'wood'
+  )
+  if (useRooms) {
+    for (let i = 0; i < W * H; i++) {
+      const r = region[i]
+      if (r >= 0 && !rooms!.solid[i] && !rooms!.outside[i]) regionMaterial[r] = 'wood'
+    }
+  }
+
+  // paint seeds override per region (deck included — paint it if you want)
   for (const paint of floor.paints ?? []) {
     const cx = Math.round((paint.x - ox) / CELL)
     const cy = Math.round((paint.y - oy) / CELL)
@@ -810,7 +833,8 @@ function buildPitchedRoof(
   const z0 = bounds.z0 - OV
   const x1 = bounds.x1 + OV
   const z1 = bounds.z1 + OV
-  const alongX = x1 - x0 >= z1 - z0
+  const alongX =
+    roof.ridge === 'ew' ? true : roof.ridge === 'ns' ? false : x1 - x0 >= z1 - z0
   const hs = (alongX ? z1 - z0 : x1 - x0) / 2
   const rise = Math.max(4, (Math.max(0.5, roof.pitch) / 12) * hs)
   const ridgeY = baseY + rise
@@ -947,37 +971,49 @@ function buildBuilding(
     // flat roofs follow the footprint per-cell; pitched roofs are built after the loop
     const roofY = enclosed && isTop && b.roof.style === 'flat' ? wallTop : undefined
 
-    // floor surface: use this story's own walls; if they don't seal a room,
-    // inherit the footprint of the story below so upper floors always get a floor
+    // floor surface: seal with this story's own walls UNION the footprint below.
+    // Rooms sealed by own walls get their floor material; other covered area over
+    // the story below becomes a flat deck/roof surface. This means upper stories
+    // always get a real floor even when their rooms borrow lower-story walls.
     const extras: Pt[] = [
       ...floor.furniture.map((f) => ({ x: f.x, y: f.y })),
       ...holes.map((h) => ({ x: h.x, y: h.y })),
     ]
-    let raster = rasterizeFloor(floor.walls, extras)
-    if (k > 0 && (!raster || !raster.enclosed) && footprintWalls.length) {
-      const inherited = rasterizeFloor(footprintWalls, extras)
-      if (inherited && (inherited.enclosed || !raster)) {
-        raster = inherited
-      } else if (raster) {
-        footprintWalls = floor.walls
-      }
-    } else {
-      footprintWalls = floor.walls
-    }
-    if (raster) buildFloorSurface(fg, floor, k, holes, raster, roofY)
+    const unionWalls = k > 0 && footprintWalls.length ? [...footprintWalls, ...floor.walls] : floor.walls
+    const union = rasterizeFloor(unionWalls, extras)
+    const own =
+      k > 0 && union
+        ? rasterizeFloor(floor.walls, extras, {
+            CELL: union.CELL,
+            ox: union.ox,
+            oy: union.oy,
+            W: union.W,
+            H: union.H,
+          })
+        : null
+    if (union) buildFloorSurface(fg, floor, k, holes, union, own, roofY)
+    footprintWalls = union && union.enclosed ? unionWalls : floor.walls
 
-    // walls: extend full-height walls up through the story gap so they meet
-    // the underside of the next floor (no air gap between stories)
-    const extend = isTop ? undefined : { to: floor.height + STORY_GAP, ifAtLeast: floor.height }
+    // walls: extend full-height walls up through the story gap so they meet the
+    // underside of the next floor. "Full height" = at least the story height OR the
+    // tallest wall on the floor (covers walls shorter than an increased story
+    // height). Never cut taller walls down.
+    const maxWallH = floor.walls.reduce((m, w) => Math.max(m, w.height), 0)
+    const fullH = Math.min(floor.height, maxWallH || floor.height)
+    const extend = isTop
+      ? undefined
+      : { to: Math.max(floor.height + STORY_GAP, 0), ifAtLeast: fullH }
     for (const w of floor.walls) buildWall(fg, w, floor.openings, extend, { wallId: w.id, floor: k })
 
-    // pitched roof over the top story
-    if (enclosed && isTop && b.roof.style !== 'flat' && footprintWalls.length) {
+    // pitched roof over the top story: prefer the story's own sealed outline
+    // (e.g. the apartment) — the deck around it stays a flat roof
+    if (enclosed && isTop && b.roof.style !== 'flat') {
+      const roofWalls = own && own.enclosed && floor.walls.length ? floor.walls : footprintWalls
       let x0 = Infinity,
         z0 = Infinity,
         x1 = -Infinity,
         z1 = -Infinity
-      for (const w of footprintWalls) {
+      for (const w of roofWalls) {
         for (const p of [w.a, w.b]) {
           x0 = Math.min(x0, p.x)
           z0 = Math.min(z0, p.y)

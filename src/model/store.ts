@@ -284,7 +284,21 @@ export const useStore = create<StoreState>((set, get) => {
             ...s.project,
             buildings: s.project.buildings.map((b, j) =>
               j === bi
-                ? { ...b, floors: b.floors.map((f, k) => (k === i ? { ...f, ...patch } : f)) }
+                ? {
+                    ...b,
+                    floors: b.floors.map((f, k) => {
+                      if (k !== i) return f
+                      const next = { ...f, ...patch }
+                      // story-height change: walls that were at the old story height
+                      // (full-height walls) follow the new height
+                      if (patch.height != null && patch.height !== f.height) {
+                        next.walls = f.walls.map((w) =>
+                          Math.abs(w.height - f.height) < 0.5 ? { ...w, height: patch.height! } : w
+                        )
+                      }
+                      return next
+                    }),
+                  }
                 : b
             ),
           },

@@ -121,6 +121,8 @@ export interface RoofSpec {
   /** rise per 12 of run (4 = 4:12) */
   pitch: number
   material: RoofMaterial
+  /** ridge direction: auto = along the longer side */
+  ridge?: 'auto' | 'ew' | 'ns'
 }
 
 /** A building placed on the plot. Floor geometry is in building-local inches. */
@@ -238,6 +240,7 @@ export function migrateProject(raw: any): Project | null {
           style: b.roof?.style ?? 'gable',
           pitch: typeof b.roof?.pitch === 'number' ? b.roof.pitch : 4,
           material: b.roof?.material ?? 'shingles',
+          ridge: b.roof?.ridge ?? 'auto',
         },
       })),
     }
