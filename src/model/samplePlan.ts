@@ -54,6 +54,7 @@ export const SAMPLE_PROJECT: Project = {
       x: 864,
       y: 480,
       rot: 0,
+      roof: { style: 'gable', pitch: 4, material: 'shingles' },
       floors: [
     {
       id: 'floor1',

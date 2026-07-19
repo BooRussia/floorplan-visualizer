@@ -81,9 +81,15 @@ to the browser (localStorage) and can be exported/imported as JSON from the tool
 ## 3D view
 
 **Generate 3D** is scope-aware:
-- **Inside a building** it shows just that building as an open cutaway *dollhouse*.
-- **On the plot** it shows the whole property with buildings **fully enclosed** (roofed)
-  on grass, with driveways, fences and landscaping.
+- **Inside a building** it shows just that building as an open cutaway *dollhouse* — with
+  an **Open / Closed toggle** to switch to the finished exterior. Closed mode completes
+  the shell and adds the roof, with live controls for **style (gable / hip / flat),
+  pitch (2:12–12:12) and material (shingles / standing-seam metal)** — also editable from
+  the building's panel on the plot.
+- A **+ Window** mode lets you click any wall in the 3D view (open or closed) to add a
+  window right there; it syncs back to the 2D plan instantly.
+- **On the plot** it shows the whole property with buildings **fully enclosed** using each
+  building's roof settings, on grass with driveways, fences and landscaping.
 
 The plan is rebuilt as a realistic cutaway model: textured wood
 floors (auto-detected room interiors, any shape — including curved walls), white walls with

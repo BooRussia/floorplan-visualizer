@@ -113,6 +113,16 @@ export interface Floor {
   roads: Road[]
 }
 
+export type RoofStyle = 'flat' | 'gable' | 'hip'
+export type RoofMaterial = 'shingles' | 'metal'
+
+export interface RoofSpec {
+  style: RoofStyle
+  /** rise per 12 of run (4 = 4:12) */
+  pitch: number
+  material: RoofMaterial
+}
+
 /** A building placed on the plot. Floor geometry is in building-local inches. */
 export interface Building {
   id: string
@@ -121,6 +131,7 @@ export interface Building {
   y: number
   rot: number // degrees clockwise
   floors: Floor[]
+  roof: RoofSpec
 }
 
 export interface Project {
@@ -185,6 +196,7 @@ export const emptyBuilding = (n: number, x = 0, y = 0): Building => ({
   y,
   rot: 0,
   floors: [emptyFloor(1)],
+  roof: { style: 'gable', pitch: 4, material: 'shingles' },
 })
 
 export const emptyProject = (): Project => ({
@@ -222,6 +234,11 @@ export function migrateProject(raw: any): Project | null {
         y: b.y ?? 0,
         rot: b.rot ?? 0,
         floors: (b.floors ?? []).slice(0, MAX_FLOORS).map(migrateFloor),
+        roof: {
+          style: b.roof?.style ?? 'gable',
+          pitch: typeof b.roof?.pitch === 'number' ? b.roof.pitch : 4,
+          material: b.roof?.material ?? 'shingles',
+        },
       })),
     }
   }

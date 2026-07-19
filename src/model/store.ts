@@ -62,7 +62,7 @@ interface StoreState {
   exitToPlot: () => void
   setPlotSize: (w: number, d: number) => void
   addBuilding: (opts?: { w?: number; d?: number; x?: number; y?: number; name?: string }) => void
-  updateBuilding: (id: string, patch: Partial<Pick<Building, 'name' | 'x' | 'y' | 'rot'>>) => void
+  updateBuilding: (id: string, patch: Partial<Pick<Building, 'name' | 'x' | 'y' | 'rot' | 'roof'>>) => void
   deleteBuilding: (id: string) => void
 
   setActiveFloor: (i: number) => void

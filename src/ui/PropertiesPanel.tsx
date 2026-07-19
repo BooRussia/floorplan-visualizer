@@ -261,6 +261,47 @@ export default function PropertiesPanel() {
             <span>Floors</span>
             <b>{b.floors.length}</b>
           </div>
+          <div className="prop-field">
+            <span>Roof</span>
+            <div className="prop-row">
+              <select
+                value={b.roof.style}
+                onChange={(e) => {
+                  st.checkpoint()
+                  st.updateBuilding(b.id, { roof: { ...b.roof, style: e.target.value as any } })
+                }}
+              >
+                <option value="gable">Gable</option>
+                <option value="hip">Hip</option>
+                <option value="flat">Flat</option>
+              </select>
+              {b.roof.style !== 'flat' && (
+                <select
+                  value={String(b.roof.pitch)}
+                  onChange={(e) => {
+                    st.checkpoint()
+                    st.updateBuilding(b.id, { roof: { ...b.roof, pitch: Number(e.target.value) } })
+                  }}
+                >
+                  {[2, 3, 4, 5, 6, 7, 8, 9, 10, 12].map((p) => (
+                    <option key={p} value={p}>
+                      {p}:12
+                    </option>
+                  ))}
+                </select>
+              )}
+              <select
+                value={b.roof.material}
+                onChange={(e) => {
+                  st.checkpoint()
+                  st.updateBuilding(b.id, { roof: { ...b.roof, material: e.target.value as any } })
+                }}
+              >
+                <option value="shingles">Shingles</option>
+                <option value="metal">Metal</option>
+              </select>
+            </div>
+          </div>
           <button className="mini-btn" onClick={() => st.enterBuilding(idx)}>
             Edit floor plans →
           </button>

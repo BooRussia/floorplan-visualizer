@@ -9,10 +9,11 @@ import {
   type Project,
   type Pt,
   type Road,
+  type RoofSpec,
   type Wall,
 } from '../model/types'
 import { dist, sampleRoad, toLocal, wallPointAt, wallSamples } from '../model/geometry'
-import { getGrassTexture, MAT, roomFloorMaterial, surfaceMaterial } from './materials'
+import { getGrassTexture, MAT, roofSurfaceMaterial, roomFloorMaterial, surfaceMaterial } from './materials'
 import { buildFurniture } from './furniture3d'
 
 const FLOOR_Y = 0.12
@@ -60,7 +61,8 @@ function wallBox(
   thickness: number,
   mat: THREE.Material,
   extendStart = 0,
-  extendEnd = 0
+  extendEnd = 0,
+  tag?: { wallId: string; floor: number }
 ) {
   const L = dist(a, b) + extendStart + extendEnd
   if (L <= 0.01 || y1 - y0 <= 0.01) return
@@ -73,6 +75,7 @@ function wallBox(
   const m = mesh(new THREE.BoxGeometry(L, y1 - y0, thickness), mat)
   m.position.set(cx, (y0 + y1) / 2, cz)
   m.rotation.y = -ang
+  if (tag) m.userData.wallTag = tag
   group.add(m)
 }
 
@@ -418,7 +421,8 @@ function buildWall(
   group: THREE.Group,
   w: Wall,
   openings: Opening[],
-  extendTo?: { to: number; ifAtLeast: number }
+  extendTo?: { to: number; ifAtLeast: number },
+  tag?: { wallId: string; floor: number }
 ) {
   const H = w.height
   const extended = !!extendTo && w.height >= extendTo.ifAtLeast - 0.5
@@ -429,7 +433,7 @@ function buildWall(
   if (w.bulge) {
     const pts = wallSamples(w, 4)
     for (let i = 0; i < pts.length - 1; i++) {
-      wallBox(group, pts[i], pts[i + 1], 0, top, th, MAT.wall, 0.6, 0.6)
+      wallBox(group, pts[i], pts[i + 1], 0, top, th, MAT.wall, 0.6, 0.6, tag)
       if (!extended) wallBox(group, pts[i], pts[i + 1], H, H + 1, th + 0.4, MAT.wallCap, 0.6, 0.6)
     }
     return
@@ -447,7 +451,7 @@ function buildWall(
   let cursor = 0
   for (const { o, s0, s1 } of ops) {
     if (s0 > cursor) {
-      wallBox(group, alongWall(w, cursor), alongWall(w, s0), 0, top, th, MAT.wall, cursor === 0 ? ext : 0, 0)
+      wallBox(group, alongWall(w, cursor), alongWall(w, s0), 0, top, th, MAT.wall, cursor === 0 ? ext : 0, 0, tag)
     }
     const head =
       o.type === 'window'
@@ -455,9 +459,9 @@ function buildWall(
         : o.type === 'garage'
           ? Math.min(o.height ?? 84, H - 3)
           : Math.min(DOOR_HEAD, H - 4)
-    wallBox(group, alongWall(w, s0), alongWall(w, s1), head, top, th, MAT.wall)
+    wallBox(group, alongWall(w, s0), alongWall(w, s1), head, top, th, MAT.wall, 0, 0, tag)
     if (o.type === 'window') {
-      wallBox(group, alongWall(w, s0), alongWall(w, s1), 0, WINDOW_SILL, th, MAT.wall)
+      wallBox(group, alongWall(w, s0), alongWall(w, s1), 0, WINDOW_SILL, th, MAT.wall, 0, 0, tag)
       buildWindow(group, w, o, s0, s1)
     } else if (o.type === 'garage') {
       buildGarageDoor(group, w, o, s0, s1, head)
@@ -467,7 +471,7 @@ function buildWall(
     cursor = s1
   }
   if (cursor < L) {
-    wallBox(group, alongWall(w, cursor), w.b, 0, top, th, MAT.wall, cursor === 0 ? ext : 0, ext)
+    wallBox(group, alongWall(w, cursor), w.b, 0, top, th, MAT.wall, cursor === 0 ? ext : 0, ext, tag)
   }
   if (!extended) wallBox(group, w.a, w.b, H, H + 1, th + 0.4, MAT.wallCap, ext, ext)
 }
@@ -791,6 +795,132 @@ function buildRoad(group: THREE.Group, road: Road) {
 
 // ---------- main ----------
 
+/**
+ * Gable or hip roof prism over the footprint bounding box (+overhang), with
+ * gable-end infill triangles in wall material. UVs are world-scaled (96"/repeat).
+ */
+function buildPitchedRoof(
+  group: THREE.Group,
+  bounds: { x0: number; z0: number; x1: number; z1: number },
+  baseY: number,
+  roof: RoofSpec
+) {
+  const OV = 10 // eave overhang
+  const x0 = bounds.x0 - OV
+  const z0 = bounds.z0 - OV
+  const x1 = bounds.x1 + OV
+  const z1 = bounds.z1 + OV
+  const alongX = x1 - x0 >= z1 - z0
+  const hs = (alongX ? z1 - z0 : x1 - x0) / 2
+  const rise = Math.max(4, (Math.max(0.5, roof.pitch) / 12) * hs)
+  const ridgeY = baseY + rise
+  const mat = roofSurfaceMaterial(roof.material)
+  const s = 1 / 96
+
+  const pos: number[] = []
+  const uv: number[] = []
+  const idc: number[] = []
+  const tri = (
+    a: [number, number, number],
+    b: [number, number, number],
+    c: [number, number, number],
+    ua: [number, number],
+    ub: [number, number],
+    uc: [number, number]
+  ) => {
+    const base = pos.length / 3
+    pos.push(...a, ...b, ...c)
+    uv.push(ua[0] * s, ua[1] * s, ub[0] * s, ub[1] * s, uc[0] * s, uc[1] * s)
+    idc.push(base, base + 1, base + 2)
+  }
+  const quad = (
+    a: [number, number, number],
+    b: [number, number, number],
+    c: [number, number, number],
+    d: [number, number, number],
+    ua: [number, number],
+    ub: [number, number],
+    uc: [number, number],
+    ud: [number, number]
+  ) => {
+    tri(a, b, c, ua, ub, uc)
+    tri(a, c, d, ua, uc, ud)
+  }
+
+  const slope = Math.hypot(hs, rise) // uv length up the slope
+  if (alongX) {
+    const zc = (z0 + z1) / 2
+    if (roof.style === 'hip') {
+      const inset = Math.min(hs, (x1 - x0) / 2)
+      const r0 = x0 + inset
+      const r1 = x1 - inset
+      quad([x0, baseY, z1], [x1, baseY, z1], [r1, ridgeY, zc], [r0, ridgeY, zc],
+        [x0, 0], [x1, 0], [r1, slope], [r0, slope])
+      quad([x1, baseY, z0], [x0, baseY, z0], [r0, ridgeY, zc], [r1, ridgeY, zc],
+        [x1, 0], [x0, 0], [r0, slope], [r1, slope])
+      tri([x1, baseY, z1], [x1, baseY, z0], [r1, ridgeY, zc], [z1, 0], [z0, 0], [zc, slope])
+      tri([x0, baseY, z0], [x0, baseY, z1], [r0, ridgeY, zc], [z0, 0], [z1, 0], [zc, slope])
+    } else {
+      quad([x0, baseY, z1], [x1, baseY, z1], [x1, ridgeY, zc], [x0, ridgeY, zc],
+        [x0, 0], [x1, 0], [x1, slope], [x0, slope])
+      quad([x1, baseY, z0], [x0, baseY, z0], [x0, ridgeY, zc], [x1, ridgeY, zc],
+        [x1, 0], [x0, 0], [x0, slope], [x1, slope])
+    }
+  } else {
+    const xc = (x0 + x1) / 2
+    if (roof.style === 'hip') {
+      const inset = Math.min(hs, (z1 - z0) / 2)
+      const r0 = z0 + inset
+      const r1 = z1 - inset
+      quad([x0, baseY, z0], [x0, baseY, z1], [xc, ridgeY, r1], [xc, ridgeY, r0],
+        [z0, 0], [z1, 0], [r1, slope], [r0, slope])
+      quad([x1, baseY, z1], [x1, baseY, z0], [xc, ridgeY, r0], [xc, ridgeY, r1],
+        [z1, 0], [z0, 0], [r0, slope], [r1, slope])
+      tri([x0, baseY, z1], [x1, baseY, z1], [xc, ridgeY, r1], [x0, 0], [x1, 0], [xc, slope])
+      tri([x1, baseY, z0], [x0, baseY, z0], [xc, ridgeY, r0], [x1, 0], [x0, 0], [xc, slope])
+    } else {
+      quad([x0, baseY, z0], [x0, baseY, z1], [xc, ridgeY, z1], [xc, ridgeY, z0],
+        [z0, 0], [z1, 0], [z1, slope], [z0, slope])
+      quad([x1, baseY, z1], [x1, baseY, z0], [xc, ridgeY, z0], [xc, ridgeY, z1],
+        [z1, 0], [z0, 0], [z0, slope], [z1, slope])
+    }
+  }
+
+  const geo = new THREE.BufferGeometry()
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2))
+  geo.setIndex(idc)
+  geo.computeVertexNormals()
+  const m = mesh(geo, mat, true, true)
+  group.add(m)
+
+  // gable-end infill walls (wall material), inset to the true wall line
+  if (roof.style === 'gable') {
+    const wpos: number[] = []
+    const widc: number[] = []
+    const wtri = (a: number[], b: number[], c: number[]) => {
+      const base = wpos.length / 3
+      wpos.push(...a, ...b, ...c)
+      widc.push(base, base + 1, base + 2)
+    }
+    if (alongX) {
+      const zc = (z0 + z1) / 2
+      wtri([bounds.x0, baseY, z0 + OV], [bounds.x0, baseY, z1 - OV], [bounds.x0, ridgeY, zc])
+      wtri([bounds.x1, baseY, z1 - OV], [bounds.x1, baseY, z0 + OV], [bounds.x1, ridgeY, zc])
+    } else {
+      const xc = (x0 + x1) / 2
+      wtri([x1 - OV, baseY, bounds.z0], [x0 + OV, baseY, bounds.z0], [xc, ridgeY, bounds.z0])
+      wtri([x0 + OV, baseY, bounds.z1], [x1 - OV, baseY, bounds.z1], [xc, ridgeY, bounds.z1])
+    }
+    const wg = new THREE.BufferGeometry()
+    wg.setAttribute('position', new THREE.Float32BufferAttribute(wpos, 3))
+    wg.setIndex(widc)
+    wg.computeVertexNormals()
+    const gm = new THREE.MeshStandardMaterial({ color: '#fafafa', roughness: 0.92, side: THREE.DoubleSide })
+    group.add(mesh(wg, gm, true, true))
+  }
+}
+
 function buildBuilding(
   b: Building,
   index: number,
@@ -814,7 +944,8 @@ function buildBuilding(
     // top floor of an enclosed building gets a roof at its wall height
     const isTop = k === b.floors.length - 1
     const wallTop = floor.walls.reduce((m, w) => Math.max(m, w.height), floor.height)
-    const roofY = enclosed && isTop ? wallTop : undefined
+    // flat roofs follow the footprint per-cell; pitched roofs are built after the loop
+    const roofY = enclosed && isTop && b.roof.style === 'flat' ? wallTop : undefined
 
     // floor surface: use this story's own walls; if they don't seal a room,
     // inherit the footprint of the story below so upper floors always get a floor
@@ -838,7 +969,24 @@ function buildBuilding(
     // walls: extend full-height walls up through the story gap so they meet
     // the underside of the next floor (no air gap between stories)
     const extend = isTop ? undefined : { to: floor.height + STORY_GAP, ifAtLeast: floor.height }
-    for (const w of floor.walls) buildWall(fg, w, floor.openings, extend)
+    for (const w of floor.walls) buildWall(fg, w, floor.openings, extend, { wallId: w.id, floor: k })
+
+    // pitched roof over the top story
+    if (enclosed && isTop && b.roof.style !== 'flat' && footprintWalls.length) {
+      let x0 = Infinity,
+        z0 = Infinity,
+        x1 = -Infinity,
+        z1 = -Infinity
+      for (const w of footprintWalls) {
+        for (const p of [w.a, w.b]) {
+          x0 = Math.min(x0, p.x)
+          z0 = Math.min(z0, p.y)
+          x1 = Math.max(x1, p.x)
+          z1 = Math.max(z1, p.y)
+        }
+      }
+      if (x1 > x0 && z1 > z0) buildPitchedRoof(fg, { x0, z0, x1, z1 }, wallTop, b.roof)
+    }
 
     for (const f of floor.furniture) {
       const g = buildFurniture(f.kind, f.w, f.d, f.h)
@@ -866,7 +1014,11 @@ function buildBuilding(
  *  - building: only that one building as an OPEN dollhouse (no roof, no site).
  *  - plot: the whole property with ENCLOSED buildings (roofed) on grass + landscaping.
  */
-export function buildProject(project: Project, focus: EditMode): BuiltProject {
+export function buildProject(
+  project: Project,
+  focus: EditMode,
+  closedDollhouse = false
+): BuiltProject {
   const group = new THREE.Group()
   const floorGroups: { floor: number; group: THREE.Group; baseY: number }[] = []
   const furniture = new Map<string, BuiltFurniture>()
@@ -874,7 +1026,13 @@ export function buildProject(project: Project, focus: EditMode): BuiltProject {
   if (focus.scope === 'building') {
     const b = project.buildings[focus.index]
     // build a single building centered at the origin, open (no roof)
-    const bg = buildBuilding({ ...b, x: 0, y: 0, rot: 0 }, focus.index, furniture, floorGroups, false)
+    const bg = buildBuilding(
+      { ...b, x: 0, y: 0, rot: 0 },
+      focus.index,
+      furniture,
+      floorGroups,
+      closedDollhouse
+    )
     group.add(bg)
     const bbox = new THREE.Box3().setFromObject(group)
     const center = new THREE.Vector3()

@@ -56,6 +56,106 @@ function makeWoodTexture(): THREE.Texture {
 let woodTex: THREE.Texture | null = null
 export const getWoodTexture = () => (woodTex ??= makeWoodTexture())
 
+// ---------- procedural roof textures ----------
+// canvas covers 96" x 96" of roof surface (repeat 1 with world-scaled UVs)
+
+function makeShingleTexture(): THREE.Texture {
+  const S = 256
+  const canvas = document.createElement('canvas')
+  canvas.width = S
+  canvas.height = S
+  const ctx = canvas.getContext('2d')!
+  ctx.fillStyle = '#565a60'
+  ctx.fillRect(0, 0, S, S)
+  const course = S / 12 // ~8" exposure
+  let seed = 11
+  const rand = () => {
+    seed = (seed * 16807) % 2147483647
+    return seed / 2147483647
+  }
+  for (let r = 0; r < 12; r++) {
+    const y = r * course
+    // tab shadows
+    ctx.fillStyle = 'rgba(0,0,0,0.35)'
+    ctx.fillRect(0, y + course - 2, S, 2)
+    const off = (r % 2) * (S / 16) + rand() * 4
+    for (let x = -1; x < 9; x++) {
+      const px = x * (S / 8) + off
+      ctx.fillStyle = 'rgba(0,0,0,0.22)'
+      ctx.fillRect(px, y, 1.6, course)
+      // slight tonal variation per tab
+      const tone = 0.9 + rand() * 0.2
+      ctx.fillStyle = `rgba(${86 * tone | 0},${90 * tone | 0},${96 * tone | 0},0.5)`
+      ctx.fillRect(px + 1.6, y, S / 8 - 1.6, course - 2)
+    }
+  }
+  const tex = new THREE.CanvasTexture(canvas)
+  tex.wrapS = THREE.RepeatWrapping
+  tex.wrapT = THREE.RepeatWrapping
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.anisotropy = 8
+  return tex
+}
+
+function makeMetalRoofTexture(): THREE.Texture {
+  const S = 256
+  const canvas = document.createElement('canvas')
+  canvas.width = S
+  canvas.height = S
+  const ctx = canvas.getContext('2d')!
+  const g = ctx.createLinearGradient(0, 0, S, 0)
+  g.addColorStop(0, '#67707a')
+  g.addColorStop(0.5, '#727b85')
+  g.addColorStop(1, '#67707a')
+  ctx.fillStyle = g
+  ctx.fillRect(0, 0, S, S)
+  // standing seams every 16"
+  const seam = S / 6
+  for (let i = 0; i <= 6; i++) {
+    const x = i * seam
+    ctx.fillStyle = 'rgba(255,255,255,0.35)'
+    ctx.fillRect(x - 1.5, 0, 1.5, S)
+    ctx.fillStyle = 'rgba(0,0,0,0.4)'
+    ctx.fillRect(x, 0, 2.2, S)
+  }
+  const tex = new THREE.CanvasTexture(canvas)
+  tex.wrapS = THREE.RepeatWrapping
+  tex.wrapT = THREE.RepeatWrapping
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.anisotropy = 8
+  return tex
+}
+
+let shingleTex: THREE.Texture | null = null
+let metalRoofTex: THREE.Texture | null = null
+const roofMats = new Map<string, THREE.MeshStandardMaterial>()
+
+/** Material for a roof surface; UVs are expected in 96"-per-repeat world units. */
+export function roofSurfaceMaterial(material: 'shingles' | 'metal'): THREE.MeshStandardMaterial {
+  let m = roofMats.get(material)
+  if (!m) {
+    if (material === 'metal') {
+      metalRoofTex ??= makeMetalRoofTexture()
+      m = new THREE.MeshStandardMaterial({
+        map: metalRoofTex,
+        roughness: 0.38,
+        metalness: 0.55,
+        side: THREE.DoubleSide,
+      })
+    } else {
+      shingleTex ??= makeShingleTexture()
+      m = new THREE.MeshStandardMaterial({
+        map: shingleTex,
+        roughness: 0.92,
+        metalness: 0.02,
+        side: THREE.DoubleSide,
+      })
+    }
+    roofMats.set(material, m)
+  }
+  return m
+}
+
 /** Generic noise/pattern texture factory for ground surfaces. */
 function makeNoiseTexture(
   base: [number, number, number],

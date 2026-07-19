@@ -15,6 +15,7 @@ interface ThreeState {
   sun: THREE.DirectionalLight
   raf: number
   frameVisible?: () => void
+  rebuild?: (fit: boolean) => void
 }
 
 export default function Scene3D() {
@@ -28,6 +29,16 @@ export default function Scene3D() {
       ? s.project.buildings[focus.index]?.floors.length ?? 1
       : Math.max(1, ...s.project.buildings.map((b) => b.floors.length))
   )
+  const roof = useStore((s) =>
+    focus.scope === 'building' ? s.project.buildings[focus.index]?.roof : undefined
+  )
+  const [closed, setClosed] = useState(false)
+  const closedRef = useRef(closed)
+  closedRef.current = closed
+  const [winMode, setWinMode] = useState(false)
+  const winModeRef = useRef(winMode)
+  winModeRef.current = winMode
+
   // Multi-story buildings default to showing ONLY the top floor (lower floors
   // hidden) so you see it as a clean single-story plan; 'all' stacks them.
   const topFloor = Math.max(0, floorCount - 1)
@@ -42,7 +53,7 @@ export default function Scene3D() {
   const applyVisibility = (reframe = true) => {
     const st = stateRef.current
     if (!st?.built) return
-    const sel = visRef.current
+    const sel = closedRef.current ? 'all' : visRef.current
     for (const fg of st.built.floorGroups) {
       if (sel === 'all') {
         fg.group.visible = true
@@ -56,6 +67,12 @@ export default function Scene3D() {
     if (reframe && st.frameVisible) st.frameVisible()
   }
   useEffect(() => applyVisibility(true), [visFloor])
+
+  // closed exterior <-> open dollhouse: rebuild with/without roof + full shell
+  useEffect(() => {
+    const st = stateRef.current
+    if (st?.rebuild) st.rebuild(true)
+  }, [closed, roof?.style, roof?.pitch, roof?.material])
 
   useEffect(() => {
     const mount = mountRef.current!
@@ -192,7 +209,7 @@ export default function Scene3D() {
         disposePlan(st.built.group)
       }
       clearSelectionBox()
-      st.built = buildProject(project, focus)
+      st.built = buildProject(project, focus, closedRef.current)
       scene.add(st.built.group)
       const { center, radius } = st.built
       sun.position.set(center.x + radius * 1.1, center.y + radius * 2.2, center.z + radius * 0.7)
@@ -210,6 +227,7 @@ export default function Scene3D() {
       syncSelectionBox()
     }
 
+    st.rebuild = rebuild
     rebuild(true)
 
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -272,6 +290,31 @@ export default function Scene3D() {
       return null
     }
 
+    /** pick a wall face (window-placement mode): returns wallId + floor + hit point */
+    const pickWall = (ev: PointerEvent) => {
+      if (!st.built) return null
+      setNdc(ev)
+      ray.setFromCamera(ndc, camera)
+      const hits = ray.intersectObjects([st.built.group], true)
+      for (const hit of hits) {
+        const tag = hit.object.userData.wallTag as { wallId: string; floor: number } | undefined
+        if (!tag) continue
+        // ignore walls on hidden floors
+        let p: THREE.Object3D | null = hit.object
+        let visible = true
+        while (p) {
+          if (p.visible === false) {
+            visible = false
+            break
+          }
+          p = p.parent
+        }
+        if (!visible) continue
+        return { tag, point: hit.point.clone() }
+      }
+      return null
+    }
+
     const planePoint = (ev: PointerEvent): THREE.Vector3 | null => {
       setNdc(ev)
       ray.setFromCamera(ndc, camera)
@@ -288,8 +331,51 @@ export default function Scene3D() {
 
     const onPointerDown = (ev: PointerEvent) => {
       if (ev.button !== 0) return
-      const id = pick(ev)
       const store = useStore.getState()
+
+      // window-placement mode: click a wall to add a window there
+      if (winModeRef.current && focus.scope === 'building') {
+        const hit = pickWall(ev)
+        if (hit) {
+          const b = store.project.buildings[focus.index]
+          const floor = b.floors[hit.tag.floor]
+          const wall = floor?.walls.find((w) => w.id === hit.tag.wallId)
+          if (wall && !wall.bulge) {
+            // focused building is built at origin/rot 0, so world x/z are local plan coords
+            const ax = wall.a.x
+            const ay = wall.a.y
+            const dx = wall.b.x - ax
+            const dy = wall.b.y - ay
+            const len2 = dx * dx + dy * dy || 1
+            const L = Math.sqrt(len2)
+            const width = 36
+            let t = ((hit.point.x - ax) * dx + (hit.point.z - ay) * dy) / len2
+            const margin = width / 2 / L
+            t = Math.max(margin, Math.min(1 - margin, t))
+            if (L >= width + 6) {
+              store.setActiveFloor(hit.tag.floor)
+              store.checkpoint()
+              store.addOpening({
+                wallId: wall.id,
+                t,
+                width,
+                type: 'window',
+                flipSwing: false,
+                flipHinge: false,
+              })
+            }
+          }
+        }
+        return
+      }
+
+      // closed exterior: interior furniture isn't clickable
+      if (closedRef.current && focus.scope === 'building') {
+        store.select(null)
+        return
+      }
+
+      const id = pick(ev)
       if (id && st.built) {
         const info = st.built.furniture.get(id)!
         // route edits to this furniture's floor (focus already set the layer at mount)
@@ -348,6 +434,10 @@ export default function Scene3D() {
     renderer.domElement.addEventListener('pointerdown', onPointerDown)
     window.addEventListener('pointermove', onPointerMove)
     window.addEventListener('pointerup', onPointerUp)
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setWinMode(false)
+    }
+    window.addEventListener('keydown', onKey)
 
     const ro = new ResizeObserver(() => {
       const w = mount.clientWidth
@@ -377,6 +467,7 @@ export default function Scene3D() {
       renderer.domElement.removeEventListener('pointerdown', onPointerDown)
       window.removeEventListener('pointermove', onPointerMove)
       window.removeEventListener('pointerup', onPointerUp)
+      window.removeEventListener('keydown', onKey)
       if (st.built) disposePlan(st.built.group)
       controls.dispose()
       renderer.dispose()
@@ -389,7 +480,7 @@ export default function Scene3D() {
   return (
     <div className="scene3d-wrap">
       <div ref={mountRef} className="scene3d-mount" />
-      {floorCount > 1 && (
+      {floorCount > 1 && !closed && (
         <div className="floor-vis" role="toolbar" aria-label="Floor visibility">
           {Array.from({ length: floorCount }, (_, i) => floorCount - 1 - i).map((i) => (
             <button
@@ -410,9 +501,79 @@ export default function Scene3D() {
           </button>
         </div>
       )}
+      {focus.scope === 'building' && (
+        <div className="scene3d-controls">
+          <button
+            className={closed ? 'active' : ''}
+            onClick={() => setClosed(!closed)}
+            title={closed ? 'Back to the open cutaway dollhouse' : 'Show the finished exterior with roof'}
+          >
+            {closed ? '⌂ Closed' : '◱ Open'}
+          </button>
+          <button
+            className={winMode ? 'active' : ''}
+            onClick={() => setWinMode(!winMode)}
+            title="Click a wall to add a window (Esc to finish)"
+          >
+            + Window
+          </button>
+          {closed && roof && (
+            <>
+              <select
+                value={roof.style}
+                title="Roof style"
+                onChange={(e) => {
+                  const st = useStore.getState()
+                  const b = st.project.buildings[focus.index]
+                  st.checkpoint()
+                  st.updateBuilding(b.id, { roof: { ...b.roof, style: e.target.value as any } })
+                }}
+              >
+                <option value="gable">Gable</option>
+                <option value="hip">Hip</option>
+                <option value="flat">Flat</option>
+              </select>
+              {roof.style !== 'flat' && (
+                <select
+                  value={String(roof.pitch)}
+                  title="Roof pitch (rise : 12)"
+                  onChange={(e) => {
+                    const st = useStore.getState()
+                    const b = st.project.buildings[focus.index]
+                    st.checkpoint()
+                    st.updateBuilding(b.id, { roof: { ...b.roof, pitch: Number(e.target.value) } })
+                  }}
+                >
+                  {[2, 3, 4, 5, 6, 7, 8, 9, 10, 12].map((p) => (
+                    <option key={p} value={p}>
+                      {p}:12
+                    </option>
+                  ))}
+                </select>
+              )}
+              <select
+                value={roof.material}
+                title="Roof material"
+                onChange={(e) => {
+                  const st = useStore.getState()
+                  const b = st.project.buildings[focus.index]
+                  st.checkpoint()
+                  st.updateBuilding(b.id, { roof: { ...b.roof, material: e.target.value as any } })
+                }}
+              >
+                <option value="shingles">Shingles</option>
+                <option value="metal">Metal</option>
+              </select>
+            </>
+          )}
+        </div>
+      )}
       <div className="canvas-hint scene3d-hint">
-        Drag to orbit · scroll to zoom · click items to select, drag to move · edits in 2D
-        regenerate this view automatically
+        {winMode
+          ? 'Click any wall to add a window · Esc to finish'
+          : closed
+            ? 'Finished exterior — adjust roof style, pitch and material above'
+            : 'Drag to orbit · scroll to zoom · click items to select, drag to move · edits in 2D regenerate this view automatically'}
       </div>
       <div className="zoom-controls">
         <button title="Recenter view" onClick={() => (mountRef.current as any)?.__recenter?.()}>
