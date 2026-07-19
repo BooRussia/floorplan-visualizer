@@ -409,16 +409,28 @@ function buildFence(group: THREE.Group, w: Wall, openings: Opening[]) {
   }
 }
 
-function buildWall(group: THREE.Group, w: Wall, openings: Opening[]) {
+/**
+ * extendTo: when this wall belongs to a floor with another story above, full-height
+ * walls are extended up to `extendTo` (the underside of the next story's floor) so
+ * walls meet the floor above with no gap; the cap is skipped (it would be buried).
+ */
+function buildWall(
+  group: THREE.Group,
+  w: Wall,
+  openings: Opening[],
+  extendTo?: { to: number; ifAtLeast: number }
+) {
   const H = w.height
+  const extended = !!extendTo && w.height >= extendTo.ifAtLeast - 0.5
+  const top = extended ? extendTo!.to : H
   const th = w.thickness
   const ext = th / 2 // match the 2D square line caps so corners close
 
   if (w.bulge) {
     const pts = wallSamples(w, 4)
     for (let i = 0; i < pts.length - 1; i++) {
-      wallBox(group, pts[i], pts[i + 1], 0, H, th, MAT.wall, 0.6, 0.6)
-      wallBox(group, pts[i], pts[i + 1], H, H + 1, th + 0.4, MAT.wallCap, 0.6, 0.6)
+      wallBox(group, pts[i], pts[i + 1], 0, top, th, MAT.wall, 0.6, 0.6)
+      if (!extended) wallBox(group, pts[i], pts[i + 1], H, H + 1, th + 0.4, MAT.wallCap, 0.6, 0.6)
     }
     return
   }
@@ -435,7 +447,7 @@ function buildWall(group: THREE.Group, w: Wall, openings: Opening[]) {
   let cursor = 0
   for (const { o, s0, s1 } of ops) {
     if (s0 > cursor) {
-      wallBox(group, alongWall(w, cursor), alongWall(w, s0), 0, H, th, MAT.wall, cursor === 0 ? ext : 0, 0)
+      wallBox(group, alongWall(w, cursor), alongWall(w, s0), 0, top, th, MAT.wall, cursor === 0 ? ext : 0, 0)
     }
     const head =
       o.type === 'window'
@@ -443,7 +455,7 @@ function buildWall(group: THREE.Group, w: Wall, openings: Opening[]) {
         : o.type === 'garage'
           ? Math.min(o.height ?? 84, H - 3)
           : Math.min(DOOR_HEAD, H - 4)
-    wallBox(group, alongWall(w, s0), alongWall(w, s1), head, H, th, MAT.wall)
+    wallBox(group, alongWall(w, s0), alongWall(w, s1), head, top, th, MAT.wall)
     if (o.type === 'window') {
       wallBox(group, alongWall(w, s0), alongWall(w, s1), 0, WINDOW_SILL, th, MAT.wall)
       buildWindow(group, w, o, s0, s1)
@@ -455,9 +467,9 @@ function buildWall(group: THREE.Group, w: Wall, openings: Opening[]) {
     cursor = s1
   }
   if (cursor < L) {
-    wallBox(group, alongWall(w, cursor), w.b, 0, H, th, MAT.wall, cursor === 0 ? ext : 0, ext)
+    wallBox(group, alongWall(w, cursor), w.b, 0, top, th, MAT.wall, cursor === 0 ? ext : 0, ext)
   }
-  wallBox(group, w.a, w.b, H, H + 1, th + 0.4, MAT.wallCap, ext, ext)
+  if (!extended) wallBox(group, w.a, w.b, H, H + 1, th + 0.4, MAT.wallCap, ext, ext)
 }
 
 // ---------- floor surfaces via flood fill ----------
@@ -471,24 +483,26 @@ function inFootprint(p: Pt, items: Furniture[]): boolean {
   return false
 }
 
-/**
- * Wood floor + structural slab for one story.
- * level 0 gets a ground slab below grade; upper levels get a story-gap band.
- * `holes` are stairwell footprints from the floor below — skipped in both meshes.
- */
-function buildFloorAndSlab(
-  group: THREE.Group,
-  floor: Floor,
-  level: number,
-  holes: Furniture[],
-  roofY?: number
-) {
-  const walls = floor.walls
+/** Occupancy raster of a floor's walls: interior detection + room regions. */
+interface FloorRaster {
+  CELL: number
+  ox: number
+  oy: number
+  W: number
+  H: number
+  solid: Uint8Array
+  outside: Uint8Array
+  region: Int32Array
+  interiorCount: number
+  /** true when the walls seal at least one real room */
+  enclosed: boolean
+}
+
+function rasterizeFloor(walls: Wall[], extraPts: Pt[]): FloorRaster | null {
   const pts: Pt[] = []
   for (const w of walls) pts.push(...wallSamples(w, 12))
-  for (const f of floor.furniture) pts.push({ x: f.x, y: f.y })
-  for (const h of holes) pts.push({ x: h.x, y: h.y })
-  if (!pts.length) return
+  if (!pts.length) pts.push(...extraPts)
+  if (!pts.length) return null
 
   let minX = Infinity,
     minY = Infinity,
@@ -500,13 +514,22 @@ function buildFloorAndSlab(
     maxX = Math.max(maxX, p.x)
     maxY = Math.max(maxY, p.y)
   }
-  const CELL = 3
   const PAD = 3
-  const ox = minX - PAD * CELL
-  const oy = minY - PAD * CELL
-  const W = Math.ceil((maxX - ox + PAD * CELL) / CELL) + 1
-  const H = Math.ceil((maxY - oy + PAD * CELL) / CELL) + 1
-  if (W * H > 1_200_000) return
+  // adaptive resolution: grow the cell size for huge plans instead of bailing out
+  let CELL = 3
+  let ox = 0,
+    oy = 0,
+    W = 0,
+    H = 0
+  for (;;) {
+    ox = minX - PAD * CELL
+    oy = minY - PAD * CELL
+    W = Math.ceil((maxX - ox + PAD * CELL) / CELL) + 1
+    H = Math.ceil((maxY - oy + PAD * CELL) / CELL) + 1
+    if (W * H <= 600_000 || CELL >= 24) break
+    CELL *= 2
+  }
+  if (W * H > 2_000_000) return null // pathological (miles-wide bounds)
 
   const solid = new Uint8Array(W * H)
   const idx = (cx: number, cy: number) => cy * W + cx
@@ -538,7 +561,7 @@ function buildFloorAndSlab(
     }
   }
 
-  // flood outside
+  // flood the outside
   const outside = new Uint8Array(W * H)
   const stack: number[] = [0]
   outside[0] = 1
@@ -565,12 +588,8 @@ function buildFloorAndSlab(
 
   let interiorCount = 0
   for (let i = 0; i < W * H; i++) if (!solid[i] && !outside[i]) interiorCount++
-  const isInterior = (i: number) => (interiorCount > 30 ? !solid[i] && !outside[i] : !solid[i])
-
-  const cellCenter = (cx: number, cy: number): Pt => ({
-    x: ox + cx * CELL + CELL / 2,
-    y: oy + cy * CELL + CELL / 2,
-  })
+  const enclosed = interiorCount > 30
+  const isInterior = (i: number) => (enclosed ? !solid[i] && !outside[i] : !solid[i])
 
   // label connected interior regions (rooms) so paint seeds can assign materials
   const region = new Int32Array(W * H).fill(-1)
@@ -601,6 +620,35 @@ function buildFloorAndSlab(
     }
     regionCount++
   }
+
+  return { CELL, ox, oy, W, H, solid, outside, region, interiorCount, enclosed }
+}
+
+/**
+ * Wood floor + structural slab for one story, from a prepared raster.
+ * level 0 gets a ground slab below grade; upper levels get a story-gap band.
+ * `holes` are stairwell footprints from the floor below — skipped in both meshes.
+ */
+function buildFloorSurface(
+  group: THREE.Group,
+  floor: Floor,
+  level: number,
+  holes: Furniture[],
+  raster: FloorRaster,
+  roofY?: number
+) {
+  const { CELL, ox, oy, W, H, solid, outside, region, enclosed } = raster
+  const idx = (cx: number, cy: number) => cy * W + cx
+  const isInterior = (i: number) => (enclosed ? !solid[i] && !outside[i] : !solid[i])
+
+  const cellCenter = (cx: number, cy: number): Pt => ({
+    x: ox + cx * CELL + CELL / 2,
+    y: oy + cy * CELL + CELL / 2,
+  })
+
+  // paint seeds -> region materials
+  let regionCount = 0
+  for (let i = 0; i < W * H; i++) if (region[i] >= regionCount) regionCount = region[i] + 1
   const regionMaterial: string[] = new Array(regionCount).fill('wood')
   for (const paint of floor.paints ?? []) {
     const cx = Math.round((paint.x - ox) / CELL)
@@ -755,6 +803,9 @@ function buildBuilding(
   bg.rotation.y = -THREE.MathUtils.degToRad(b.rot)
 
   let elevation = 0
+  // the wall set whose footprint the story below sealed with — floors above
+  // inherit it when their own walls don't enclose anything yet
+  let footprintWalls: Wall[] = []
   b.floors.forEach((floor, k) => {
     const fg = new THREE.Group()
     fg.position.y = elevation
@@ -764,8 +815,30 @@ function buildBuilding(
     const isTop = k === b.floors.length - 1
     const wallTop = floor.walls.reduce((m, w) => Math.max(m, w.height), floor.height)
     const roofY = enclosed && isTop ? wallTop : undefined
-    buildFloorAndSlab(fg, floor, k, holes, roofY)
-    for (const w of floor.walls) buildWall(fg, w, floor.openings)
+
+    // floor surface: use this story's own walls; if they don't seal a room,
+    // inherit the footprint of the story below so upper floors always get a floor
+    const extras: Pt[] = [
+      ...floor.furniture.map((f) => ({ x: f.x, y: f.y })),
+      ...holes.map((h) => ({ x: h.x, y: h.y })),
+    ]
+    let raster = rasterizeFloor(floor.walls, extras)
+    if (k > 0 && (!raster || !raster.enclosed) && footprintWalls.length) {
+      const inherited = rasterizeFloor(footprintWalls, extras)
+      if (inherited && (inherited.enclosed || !raster)) {
+        raster = inherited
+      } else if (raster) {
+        footprintWalls = floor.walls
+      }
+    } else {
+      footprintWalls = floor.walls
+    }
+    if (raster) buildFloorSurface(fg, floor, k, holes, raster, roofY)
+
+    // walls: extend full-height walls up through the story gap so they meet
+    // the underside of the next floor (no air gap between stories)
+    const extend = isTop ? undefined : { to: floor.height + STORY_GAP, ifAtLeast: floor.height }
+    for (const w of floor.walls) buildWall(fg, w, floor.openings, extend)
 
     for (const f of floor.furniture) {
       const g = buildFurniture(f.kind, f.w, f.d, f.h)
