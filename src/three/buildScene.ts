@@ -688,6 +688,7 @@ function buildFloorSurface(
   // one geometry per material
   const byMat = new Map<string, { positions: number[]; uvs: number[]; indices: number[] }>()
   const pushQuad = (material: string, x0: number, z0: number, x1: number, z1: number) => {
+    if (material === 'open') return // open to below: no floor surface
     let acc = byMat.get(material)
     if (!acc) {
       acc = { positions: [], uvs: [], indices: [] }
@@ -710,7 +711,9 @@ function buildFloorSurface(
       const holed = cx < W && holes.length > 0 && inFootprint(cellCenter(cx, cy), holes)
       const interior = cx < W && isInterior(i) && !holed
       const cellMat = interior ? regionMaterial[region[i]] ?? 'wood' : ''
-      const slabby = cx < W && (interior || (solid[i] === 1 && !holed))
+      // 'open to below' regions have no floor and no structural band on upper stories
+      const openCell = level > 0 && cellMat === 'open'
+      const slabby = cx < W && ((interior && !openCell) || (solid[i] === 1 && !holed))
       if (interior && runStart < 0) {
         runStart = cx
         runMat = cellMat

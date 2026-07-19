@@ -51,6 +51,7 @@ export const PAINT_COLORS: Record<FloorMaterial, string> = {
   carpet: '#b6a9c9',
   concrete: '#a8a8ab',
   stone: '#8f8878',
+  open: '#e05d5d',
 }
 
 const OPENING_DEFAULTS: Record<string, number> = {

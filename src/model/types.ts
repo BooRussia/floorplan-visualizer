@@ -71,7 +71,7 @@ export interface Guide {
   y: number
 }
 
-export type FloorMaterial = 'wood' | 'tile' | 'carpet' | 'concrete' | 'stone'
+export type FloorMaterial = 'wood' | 'tile' | 'carpet' | 'concrete' | 'stone' | 'open'
 
 export type RoadMaterial = 'asphalt' | 'concrete' | 'gravel' | 'pavers'
 

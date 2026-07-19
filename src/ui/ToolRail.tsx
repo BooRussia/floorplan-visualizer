@@ -24,6 +24,7 @@ const PAINT_MATERIALS: { key: FloorMaterial; label: string }[] = [
   { key: 'carpet', label: 'Carpet' },
   { key: 'concrete', label: 'Concrete' },
   { key: 'stone', label: 'Stone' },
+  { key: 'open', label: 'Open to below' },
 ]
 
 // --- icons ---

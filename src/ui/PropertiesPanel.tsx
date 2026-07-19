@@ -26,6 +26,7 @@ const MATERIAL_LABELS: Record<FloorMaterial, string> = {
   carpet: 'Carpet',
   concrete: 'Concrete',
   stone: 'Stone',
+  open: 'Open to below',
 }
 
 /** Text input that accepts measurements like 12'6", commits on Enter/blur. */
