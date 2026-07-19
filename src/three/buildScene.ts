@@ -86,7 +86,9 @@ function buildDoorLeaves(group: THREE.Group, w: Wall, o: Opening, s0: number, s1
   const ang = Math.atan2(w.b.y - w.a.y, w.b.x - w.a.x)
   const width = s1 - s0
   const leafH = Math.min(DOOR_HEAD - 1, w.height - 4)
-  const side = o.flipSwing ? 1 : -1
+  // +openDeg swings the leaf toward the wall's -y (plan) side, matching the 2D
+  // default; flipSwing sends it to +y. (Was inverted, so 3D swings disagreed with 2D.)
+  const side = o.flipSwing ? -1 : 1
 
   const makeLeaf = (hingeS: number, leafW: number, openDeg: number) => {
     const hinge = alongWall(w, hingeS)
