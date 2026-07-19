@@ -335,6 +335,109 @@ body {
   background: #1d4fd7;
 }
 
+/* ---------- tool rail ---------- */
+.tool-rail {
+  width: 60px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2) 0;
+  overflow-y: auto;
+}
+
+.rail-btn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  padding: 8px 2px 6px;
+  margin: 0 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.rail-btn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.rail-btn.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.rail-icon {
+  display: block;
+  width: 20px;
+  height: 20px;
+}
+
+.rail-icon svg {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+
+.rail-label {
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.rail-caret {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  font-size: 8px;
+  color: var(--text-3);
+}
+
+.rail-flyout-scrim,
+.tb-menu-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+}
+
+.rail-flyout {
+  position: fixed;
+  left: 60px;
+  z-index: 100;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-2);
+  padding: var(--space-1);
+  display: flex;
+  flex-direction: column;
+  min-width: 150px;
+}
+
+.rail-flyout button {
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--text);
+}
+
+.rail-flyout button:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 /* ---------- palette ---------- */
 .palette {
   width: 232px;

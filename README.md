@@ -80,7 +80,12 @@ to the browser (localStorage) and can be exported/imported as JSON from the tool
 
 ## 3D view
 
-Hit **Generate 3D** and the plan is rebuilt as a realistic cutaway model: textured wood
+**Generate 3D** is scope-aware:
+- **Inside a building** it shows just that building as an open cutaway *dollhouse*.
+- **On the plot** it shows the whole property with buildings **fully enclosed** (roofed)
+  on grass, with driveways, fences and landscaping.
+
+The plan is rebuilt as a realistic cutaway model: textured wood
 floors (auto-detected room interiors, any shape — including curved walls), white walls with
 gray caps on a platform slab, glass windows, open door leaves, sliding panels, and parametric
 3D furniture. Multi-story plans stack into a full dollhouse with structural bands between

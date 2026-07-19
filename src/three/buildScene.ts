@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import {
   STORY_GAP,
   type Building,
+  type EditMode,
   type Floor,
   type Furniture,
   type Opening,
@@ -473,7 +474,13 @@ function inFootprint(p: Pt, items: Furniture[]): boolean {
  * level 0 gets a ground slab below grade; upper levels get a story-gap band.
  * `holes` are stairwell footprints from the floor below — skipped in both meshes.
  */
-function buildFloorAndSlab(group: THREE.Group, floor: Floor, level: number, holes: Furniture[]) {
+function buildFloorAndSlab(
+  group: THREE.Group,
+  floor: Floor,
+  level: number,
+  holes: Furniture[],
+  roofY?: number
+) {
   const walls = floor.walls
   const pts: Pt[] = []
   for (const w of walls) pts.push(...wallSamples(w, 12))
@@ -665,6 +672,16 @@ function buildFloorAndSlab(group: THREE.Group, floor: Floor, level: number, hole
     m.position.set(ox + x0 * CELL + wpx / 2, -slabTh / 2 + 0.06, oy + row * CELL + CELL / 2)
     group.add(m)
   }
+
+  // flat roof cap over the footprint (enclosed buildings only)
+  if (roofY != null) {
+    for (const [row, x0, x1] of slabRuns) {
+      const wpx = (x1 - x0) * CELL
+      const m = mesh(new THREE.BoxGeometry(wpx, 5, CELL), MAT.roof, true, true)
+      m.position.set(ox + x0 * CELL + wpx / 2, roofY + 2.5, oy + row * CELL + CELL / 2)
+      group.add(m)
+    }
+  }
 }
 
 // ---------- roads ----------
@@ -728,7 +745,8 @@ function buildBuilding(
   b: Building,
   index: number,
   furniture: Map<string, BuiltFurniture>,
-  floorGroups: { floor: number; group: THREE.Group }[]
+  floorGroups: { floor: number; group: THREE.Group }[],
+  enclosed: boolean
 ): THREE.Group {
   const bg = new THREE.Group()
   bg.position.set(b.x, 0, b.y)
@@ -740,7 +758,11 @@ function buildBuilding(
     fg.position.y = elevation
 
     const holes = k > 0 ? b.floors[k - 1].furniture.filter((f) => f.kind === 'staircase') : []
-    buildFloorAndSlab(fg, floor, k, holes)
+    // top floor of an enclosed building gets a roof at its wall height
+    const isTop = k === b.floors.length - 1
+    const wallTop = floor.walls.reduce((m, w) => Math.max(m, w.height), floor.height)
+    const roofY = enclosed && isTop ? wallTop : undefined
+    buildFloorAndSlab(fg, floor, k, holes, roofY)
     for (const w of floor.walls) buildWall(fg, w, floor.openings)
 
     for (const f of floor.furniture) {
@@ -764,12 +786,33 @@ function buildBuilding(
   return bg
 }
 
-export function buildProject(project: Project): BuiltProject {
+/**
+ * Focus decides what the 3D shows:
+ *  - building: only that one building as an OPEN dollhouse (no roof, no site).
+ *  - plot: the whole property with ENCLOSED buildings (roofed) on grass + landscaping.
+ */
+export function buildProject(project: Project, focus: EditMode): BuiltProject {
   const group = new THREE.Group()
   const floorGroups: { floor: number; group: THREE.Group }[] = []
   const furniture = new Map<string, BuiltFurniture>()
 
-  // grass plot
+  if (focus.scope === 'building') {
+    const b = project.buildings[focus.index]
+    // build a single building centered at the origin, open (no roof)
+    const bg = buildBuilding({ ...b, x: 0, y: 0, rot: 0 }, focus.index, furniture, floorGroups, false)
+    group.add(bg)
+    const bbox = new THREE.Box3().setFromObject(group)
+    const center = new THREE.Vector3()
+    const size = new THREE.Vector3()
+    if (!bbox.isEmpty()) {
+      bbox.getCenter(center)
+      bbox.getSize(size)
+    }
+    const radius = Math.max(size.x, size.z, 120) / 2
+    return { group, floorGroups, furniture, center, radius }
+  }
+
+  // ---- plot: whole property, buildings enclosed ----
   const grassMat = new THREE.MeshStandardMaterial({ map: getGrassTexture(), roughness: 1 })
   if (grassMat.map) {
     const map = grassMat.map.clone()
@@ -797,7 +840,7 @@ export function buildProject(project: Project): BuiltProject {
   }
 
   project.buildings.forEach((b, i) => {
-    group.add(buildBuilding(b, i, furniture, floorGroups))
+    group.add(buildBuilding(b, i, furniture, floorGroups, true))
   })
 
   const center = new THREE.Vector3(project.plotW / 2, 0, project.plotD / 2)

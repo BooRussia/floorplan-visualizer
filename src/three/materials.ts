@@ -189,6 +189,7 @@ export const MAT = {
   toolRed: std('#b8412f', 0.45, 0.25),
   hullNavy: std('#3d5a80', 0.4, 0.3),
   camperShell: std('#f2f1ec', 0.5, 0.15),
+  roof: std('#6d7178', 0.92),
   fenceWood: std('#c9b18e', 0.85),
   fenceWhite: std('#f4f4f2', 0.8),
   chainMetal: std('#a9adb2', 0.5, 0.6),

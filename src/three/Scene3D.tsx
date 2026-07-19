@@ -19,8 +19,13 @@ interface ThreeState {
 export default function Scene3D() {
   const mountRef = useRef<HTMLDivElement>(null)
   const stateRef = useRef<ThreeState | null>(null)
+  // capture what to show: the building being edited, or the whole plot
+  const focusRef = useRef(useStore.getState().mode)
+  const focus = focusRef.current
   const floorCount = useStore((s) =>
-    Math.max(1, ...s.project.buildings.map((b) => b.floors.length))
+    focus.scope === 'building'
+      ? s.project.buildings[focus.index]?.floors.length ?? 1
+      : Math.max(1, ...s.project.buildings.map((b) => b.floors.length))
   )
   const [visFloor, setVisFloor] = useState<'all' | number>('all')
   const visRef = useRef(visFloor)
@@ -135,7 +140,7 @@ export default function Scene3D() {
         disposePlan(st.built.group)
       }
       clearSelectionBox()
-      st.built = buildProject(project)
+      st.built = buildProject(project, focus)
       scene.add(st.built.group)
       applyVisibility()
       const { center, radius } = st.built
@@ -197,6 +202,8 @@ export default function Scene3D() {
       ray.setFromCamera(ndc, camera)
       const groups: THREE.Object3D[] = []
       for (const info of st.built.furniture.values()) {
+        // in plot view buildings are enclosed — only site items are pickable
+        if (focus.scope === 'plot' && info.place.scope === 'building') continue
         const vis =
           info.place.scope === 'site' ||
           visRef.current === 'all' ||
@@ -234,13 +241,8 @@ export default function Scene3D() {
       const store = useStore.getState()
       if (id && st.built) {
         const info = st.built.furniture.get(id)!
-        // route edits (panel + drag writes) to this furniture's layer
-        if (info.place.scope === 'building') {
-          store.enterBuilding(info.place.index)
-          store.setActiveFloor(info.place.floor)
-        } else {
-          store.exitToPlot()
-        }
+        // route edits to this furniture's floor (focus already set the layer at mount)
+        if (info.place.scope === 'building') store.setActiveFloor(info.place.floor)
         store.select({ kind: 'furniture', id })
         dragPlane.constant = -(info.elevation + 0.12)
         const p = planePoint(ev)

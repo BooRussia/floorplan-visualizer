@@ -1,4 +1,5 @@
 import Toolbar from './ui/Toolbar'
+import ToolRail from './ui/ToolRail'
 import Palette from './ui/Palette'
 import PropertiesPanel from './ui/PropertiesPanel'
 import Editor2D from './editor2d/Editor2D'
@@ -11,6 +12,7 @@ export default function App() {
     <div className="app">
       <Toolbar />
       <div className="app-body">
+        {view === '2d' && <ToolRail />}
         {view === '2d' && <Palette />}
         <main className="app-main">{view === '2d' ? <Editor2D /> : <Scene3D />}</main>
         <PropertiesPanel />
