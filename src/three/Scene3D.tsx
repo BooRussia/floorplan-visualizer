@@ -39,12 +39,8 @@ export default function Scene3D() {
   const winModeRef = useRef(winMode)
   winModeRef.current = winMode
 
-  // Multi-story buildings default to showing ONLY the top floor (lower floors
-  // hidden) so you see it as a clean single-story plan; 'all' stacks them.
-  const topFloor = Math.max(0, floorCount - 1)
-  const [visFloor, setVisFloor] = useState<'all' | number>(
-    focus.scope === 'building' && floorCount > 1 ? topFloor : 'all'
-  )
+  // Start with the full model ('all' — floors stacked); picking a floor isolates it.
+  const [visFloor, setVisFloor] = useState<'all' | number>('all')
   const visRef = useRef(visFloor)
   visRef.current = visFloor
 
@@ -482,7 +478,14 @@ export default function Scene3D() {
       <div ref={mountRef} className="scene3d-mount" />
       {floorCount > 1 && !closed && (
         <div className="floor-vis" role="toolbar" aria-label="Floor visibility">
-          {Array.from({ length: floorCount }, (_, i) => floorCount - 1 - i).map((i) => (
+          <button
+            className={visFloor === 'all' ? 'active' : ''}
+            onClick={() => setVisFloor('all')}
+            title="Stack all floors"
+          >
+            All
+          </button>
+          {Array.from({ length: floorCount }, (_, i) => (
             <button
               key={i}
               className={visFloor === i ? 'active' : ''}
@@ -492,13 +495,6 @@ export default function Scene3D() {
               Floor {i + 1}
             </button>
           ))}
-          <button
-            className={visFloor === 'all' ? 'active' : ''}
-            onClick={() => setVisFloor('all')}
-            title="Stack all floors"
-          >
-            All
-          </button>
         </div>
       )}
       {focus.scope === 'building' && (
