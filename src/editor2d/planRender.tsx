@@ -22,6 +22,18 @@ export function wallPathD(w: Wall): string {
 }
 
 export function WallShape({ w, selected }: { w: Wall; selected: boolean }) {
+  if (w.divider) {
+    return (
+      <path
+        d={wallPathD(w)}
+        stroke={selected ? ACCENT : 'var(--dim-color)'}
+        strokeWidth={1.4}
+        vectorEffect="non-scaling-stroke"
+        strokeDasharray="7 5"
+        fill="none"
+      />
+    )
+  }
   if (w.fence) {
     const L = wallLength(w)
     const posts = Math.max(2, Math.round(L / 96) + 1)

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { stairSpecs, useActiveFloor, useStore } from '../model/store'
 import { catalogItem } from '../model/catalog'
 import { dist, fmtLenShort, norm, parseLen, polygonArea, roadLength, scale, sub, add } from '../model/geometry'
+import { rasterizeFloor, regionAt, roomRegions } from '../model/raster'
 import {
   MAX_BUILDINGS,
   MAX_FLOORS,
@@ -440,12 +441,71 @@ export default function PropertiesPanel() {
     )
   }
 
+  if (selection?.kind === 'room') {
+    const r = floor.rooms.find((x) => x.id === selection.id)
+    if (!r) return null
+    const raster = rasterizeFloor(floor.walls, [])
+    const region = raster ? regionAt(raster, r.x, r.y) : -1
+    const room = roomRegions(raster).find((x) => x.id === region)
+    return (
+      <aside className="props">
+        <div className="props-header">Room</div>
+        <div className="props-body">
+          <label className="prop-field">
+            <span>Name</span>
+            <input
+              value={r.name}
+              onChange={(e) => st.updateRoomTag(r.id, { name: e.target.value })}
+              onKeyDown={(e) => e.stopPropagation()}
+            />
+          </label>
+          {room && (
+            <div className="props-stat">
+              <span>Area</span>
+              <b>{Math.round(room.areaSqIn / 144)} sq ft</b>
+            </div>
+          )}
+          <p className="props-tip">
+            Rooms are detected automatically from your walls — the name sticks to this room as
+            the plan changes. Use a room divider (Wall tool ▸) to split open spaces.
+          </p>
+          <button className="danger-btn" onClick={() => st.deleteSelected()}>
+            Remove name
+          </button>
+        </div>
+      </aside>
+    )
+  }
+
   if (!selection) {
     const wallFt = floor.walls.reduce((acc, w) => acc + dist(w.a, w.b), 0) / 12
+    const floorArea = roomRegions(rasterizeFloor(floor.walls, [])).reduce(
+      (a, r) => a + r.areaSqIn,
+      0
+    )
+    const buildingArea =
+      mode.scope === 'building'
+        ? project.buildings[mode.index].floors.reduce(
+            (acc, f) => acc + roomRegions(rasterizeFloor(f.walls, [])).reduce((a, r) => a + r.areaSqIn, 0),
+            0
+          )
+        : 0
     return (
       <aside className="props">
         <div className="props-header">{floor.name}</div>
         <div className="props-body">
+          {floorArea > 0 && (
+            <div className="props-stat">
+              <span>Floor area</span>
+              <b>{Math.round(floorArea / 144)} sq ft</b>
+            </div>
+          )}
+          {buildingArea > 0 && floorCount > 1 && (
+            <div className="props-stat">
+              <span>All floors</span>
+              <b>{Math.round(buildingArea / 144)} sq ft</b>
+            </div>
+          )}
           <LenInput
             label="Story height"
             value={floor.height}

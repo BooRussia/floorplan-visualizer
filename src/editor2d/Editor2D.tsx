@@ -24,6 +24,8 @@ import {
   wallTangentAt,
 } from '../model/geometry'
 import { catalogItem } from '../model/catalog'
+import { rasterizeFloor, regionAt, roomRegions } from '../model/raster'
+import { autoDimensions, DimString, type DimSegment } from './dimensions'
 import { Glyph } from './glyphs'
 import { ACCENT, BG, OpeningGlyph, OpeningHit, WallDim, WallShape, wallPathD } from './planRender'
 
@@ -111,6 +113,8 @@ type Drag =
 type FloatInput =
   | { kind: 'wall-len'; wallId: string }
   | { kind: 'label'; id: string }
+  | { kind: 'room'; id: string }
+  | { kind: 'dim'; seg: DimSegment }
 
 /** Active floor from the store, for use inside event handlers. */
 const fl = (): Floor => floorFor(useStore.getState())
@@ -131,6 +135,7 @@ export default function Editor2D() {
   const tool = useStore((s) => s.tool)
   const selection = useStore((s) => s.selection)
   const showDims = useStore((s) => s.showDims)
+  const showRooms = useStore((s) => s.showRooms)
   const isPlot = mode.scope === 'plot'
 
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -539,6 +544,8 @@ export default function Editor2D() {
           height: FENCE_HEIGHTS[st.tool.fence],
           fence: st.tool.fence,
         })
+      } else if (st.tool.type === 'wall' && st.tool.divider) {
+        st.addWall({ a: last, b: end, thickness: 1, bulge: 0, height: fl().height, divider: true })
       } else {
         st.addWall({ a: last, b: end, thickness: WALL_THICKNESS, bulge: 0, height: fl().height })
       }
@@ -989,6 +996,22 @@ export default function Editor2D() {
         st.deleteSelected()
       }
       setFloatInput(null)
+    } else if (fi.kind === 'room') {
+      const text = floatValue.trim()
+      if (text) st.updateRoomTag(fi.id, { name: text })
+      else {
+        st.select({ kind: 'room', id: fi.id })
+        st.deleteSelected()
+      }
+      setFloatInput(null)
+    } else if (fi.kind === 'dim') {
+      const v = parseLen(floatValue)
+      const cur = fi.seg.b - fi.seg.a
+      if (v != null && v > 6 && Math.abs(v - cur) > 0.1) {
+        const axis = fi.seg.side === 'n' || fi.seg.side === 's' ? 'x' : 'y'
+        st.stretchBuilding(axis, fi.seg.b, v - cur)
+      }
+      setFloatInput(null)
     }
   }, [floatInput, floatValue, clusterAt])
 
@@ -1008,6 +1031,26 @@ export default function Editor2D() {
     for (const w of floor.walls) m.set(w.id, w)
     return m
   }, [floor.walls])
+
+  // auto-detected rooms (building floors only): region raster + label points,
+  // matched against the floor's name tags by seed-point containment
+  const roomRaster = useMemo(
+    () => (isPlot ? null : rasterizeFloor(floor.walls, [])),
+    [isPlot, floor.walls]
+  )
+  const roomLabels = useMemo(() => {
+    const rooms = roomRegions(roomRaster)
+    if (!rooms.length || !roomRaster) return []
+    return rooms.map((r) => ({
+      ...r,
+      tag: floor.rooms.find((t) => regionAt(roomRaster, t.x, t.y) === r.id),
+    }))
+  }, [roomRaster, floor.rooms])
+
+  const autoDims = useMemo(
+    () => (isPlot || !showDims ? [] : autoDimensions(floor.walls, roomRaster)),
+    [isPlot, showDims, floor.walls, roomRaster]
+  )
 
   const sortedFurniture = useMemo(
     () =>
@@ -1032,6 +1075,15 @@ export default function Editor2D() {
   } else if (floatInput?.kind === 'label') {
     const l = floor.labels.find((x) => x.id === floatInput.id)
     if (l) floatPos = screenFromWorld({ x: l.x, y: l.y })
+  } else if (floatInput?.kind === 'room') {
+    const rl = roomLabels.find((r) => r.tag?.id === floatInput.id)
+    if (rl) floatPos = screenFromWorld({ x: rl.cx, y: rl.cy })
+  } else if (floatInput?.kind === 'dim') {
+    const s = floatInput.seg
+    const mid = (s.a + s.b) / 2
+    floatPos = screenFromWorld(
+      s.side === 'n' || s.side === 's' ? { x: mid, y: s.line } : { x: s.line, y: mid }
+    )
   }
   const drawCurScreen = draft?.cur ? screenFromWorld(draft.cur) : null
 
@@ -1537,6 +1589,82 @@ export default function Editor2D() {
           </text>
         ))}
 
+        {/* auto exterior dimension strings */}
+        {autoDims.map((seg, i) => (
+          <DimString
+            key={`${seg.side}-${i}`}
+            seg={seg}
+            fontWorld={fontWorld * 0.82}
+            onClickLabel={
+              tool.type === 'select'
+                ? (s) => {
+                    setFloatInput({ kind: 'dim', seg: s })
+                    setFloatValue(fmtLenShort(s.b - s.a))
+                  }
+                : undefined
+            }
+          />
+        ))}
+
+        {/* auto-detected rooms: name + live area at each room's center */}
+        {!isPlot &&
+          showRooms &&
+          roomLabels.map((r) => {
+            const sqft = Math.round(r.areaSqIn / 144)
+            const selectedR = selection?.kind === 'room' && r.tag && selection.id === r.tag.id
+            const openRename = () => {
+              const st = useStore.getState()
+              let tagId = r.tag?.id
+              if (!tagId) tagId = st.addRoomTag(r.cx, r.cy)
+              st.select({ kind: 'room', id: tagId })
+              setFloatInput({ kind: 'room', id: tagId })
+              setFloatValue(r.tag?.name ?? '')
+            }
+            return (
+              <g
+                key={`room-${r.id}-${r.tag?.id ?? 'auto'}`}
+                style={{ cursor: tool.type === 'select' ? 'pointer' : undefined, userSelect: 'none' }}
+                onPointerDown={(e) => {
+                  if (tool.type !== 'select' || spaceDown) return
+                  e.stopPropagation()
+                  if (r.tag) useStore.getState().select({ kind: 'room', id: r.tag.id })
+                  else openRename()
+                }}
+                onDoubleClick={(e) => {
+                  e.stopPropagation()
+                  openRename()
+                }}
+              >
+                {r.tag && (
+                  <text
+                    x={r.cx}
+                    y={r.cy - 5}
+                    fontSize={10}
+                    fontFamily="Inter, system-ui, sans-serif"
+                    fontWeight={700}
+                    fill={selectedR ? ACCENT : 'var(--glyph-stroke)'}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                  >
+                    {r.tag.name}
+                  </text>
+                )}
+                <text
+                  x={r.cx}
+                  y={r.tag ? r.cy + 7 : r.cy}
+                  fontSize={7.5}
+                  fontFamily="Inter, system-ui, sans-serif"
+                  fontWeight={500}
+                  fill={selectedR ? ACCENT : 'var(--dim-color)'}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                >
+                  {sqft} sq ft
+                </text>
+              </g>
+            )
+          })}
+
         {/* measurement guides: rays first, then markers */}
         {guidesVisible.map((g) => {
           const rays = guideRays(g, floor.walls)
@@ -1957,7 +2085,7 @@ export default function Editor2D() {
           className="float-input"
           style={{ left: floatPos.x, top: floatPos.y - 36, transform: 'translateX(-50%)' }}
           value={floatValue}
-          placeholder={floatInput.kind === 'label' ? 'Room name' : `12'6"`}
+          placeholder={floatInput.kind === 'label' || floatInput.kind === 'room' ? 'Room name' : `12'6"`}
           onChange={(e) => setFloatValue(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
@@ -1971,9 +2099,9 @@ export default function Editor2D() {
             }
           }}
           onBlur={() => {
-            if (floatInput.kind === 'label') applyFloatInput()
+            if (floatInput.kind === 'label' || floatInput.kind === 'room') applyFloatInput()
           }}
-          autoFocus={floatInput.kind === 'label'}
+          autoFocus={floatInput.kind === 'label' || floatInput.kind === 'room'}
         />
       )}
 

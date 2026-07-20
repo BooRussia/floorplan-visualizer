@@ -13,6 +13,7 @@ export const SAMPLE_PROJECT: Project = {
     labels: [{ id: 'sl1', x: 1600, y: 1500, text: 'Driveway', size: 14 }],
     guides: [],
     paints: [],
+    rooms: [],
     roads: [
       {
         id: 'road1',
@@ -136,6 +137,7 @@ export const SAMPLE_PROJECT: Project = {
         { id: 'p2', x: 108, y: 90, material: 'carpet' },
         { id: 'p3', x: 324, y: 90, material: 'carpet' },
       ],
+      rooms: [],
       roads: [],
         },
       ],

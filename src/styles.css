@@ -1070,3 +1070,166 @@ body {
   color: var(--text);
   margin-top: 6px;
 }
+
+/* ---------- print sheet ---------- */
+.print-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgba(24, 24, 27, 0.72);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow: auto;
+  padding-bottom: 40px;
+}
+
+.print-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-2);
+  padding: var(--space-2) var(--space-3);
+  margin: 16px 0;
+  position: sticky;
+  top: 12px;
+  z-index: 2;
+}
+
+.print-controls b {
+  font-size: 13px;
+}
+
+.print-controls select,
+.print-controls input {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  font-size: 12.5px;
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.print-controls input {
+  width: 220px;
+}
+
+.print-warn {
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.print-sheet-holder {
+  flex-shrink: 0;
+}
+
+/* the sheet always renders light, whatever the app theme */
+.print-sheet {
+  --canvas-bg: #ffffff;
+  --wall-color: #1c1c21;
+  --glyph-stroke: #3f3f46;
+  --glyph-fill: #ffffff;
+  --glyph-soft: #f4f4f5;
+  --dim-color: #52525b;
+  --fence-color: #52525b;
+  background: #fff;
+  color: #18181b;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.print-plan {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.print-title {
+  border: 1.5px solid #18181b;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 14px;
+  flex-shrink: 0;
+}
+
+.pt-name {
+  font-size: 15px;
+  font-weight: 800;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pt-meta {
+  display: flex;
+  gap: 14px;
+  font-size: 10.5px;
+  color: #3f3f46;
+  white-space: nowrap;
+}
+
+.pt-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pt-bar-line {
+  height: 7px;
+  border: 1px solid #18181b;
+  display: flex;
+}
+
+.pt-bar-line span {
+  flex: 1;
+  border-right: 1px solid #18181b;
+}
+
+.pt-bar-line span:nth-child(odd) {
+  background: #18181b;
+}
+
+.pt-bar-line span:last-child {
+  border-right: none;
+}
+
+.pt-bar-label {
+  font-size: 9.5px;
+  color: #3f3f46;
+}
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+  .print-sheet,
+  .print-sheet * {
+    visibility: visible !important;
+  }
+  .print-scrim {
+    position: static;
+    background: none;
+    padding: 0;
+    overflow: visible;
+  }
+  .print-controls {
+    display: none !important;
+  }
+  .print-sheet {
+    position: fixed;
+    left: 0;
+    top: 0;
+    box-shadow: none;
+  }
+}

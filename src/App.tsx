@@ -8,11 +8,14 @@ import Scene3D from './three/Scene3D'
 import { useStore } from './model/store'
 
 const SiteImportModal = lazy(() => import('./site-import/SiteImportModal'))
+const PrintSheet = lazy(() => import('./export/PrintSheet'))
 
 export default function App() {
   const view = useStore((s) => s.view)
   const siteImportOpen = useStore((s) => s.siteImportOpen)
   const setSiteImportOpen = useStore((s) => s.setSiteImportOpen)
+  const printOpen = useStore((s) => s.printOpen)
+  const setPrintOpen = useStore((s) => s.setPrintOpen)
   return (
     <div className="app">
       <Toolbar />
@@ -25,6 +28,11 @@ export default function App() {
       {siteImportOpen && (
         <Suspense fallback={<div className="site-import-scrim" />}>
           <SiteImportModal onClose={() => setSiteImportOpen(false)} />
+        </Suspense>
+      )}
+      {printOpen && (
+        <Suspense fallback={<div className="print-scrim" />}>
+          <PrintSheet onClose={() => setPrintOpen(false)} />
         </Suspense>
       )}
     </div>

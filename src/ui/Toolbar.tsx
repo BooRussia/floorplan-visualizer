@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { useActiveFloor, useStore } from '../model/store'
 import { SAMPLE_PROJECT } from '../model/samplePlan'
+import { exportPlanPng } from '../export/planImage'
 import { MAX_FLOORS } from '../model/types'
 
 function TbButton({
@@ -27,6 +28,7 @@ export default function Toolbar() {
   const mode = useStore((s) => s.mode)
   const buildings = useStore((s) => s.project.buildings)
   const showDims = useStore((s) => s.showDims)
+  const showRooms = useStore((s) => s.showRooms)
   const setShowDims = useStore((s) => s.setShowDims)
   const undo = useStore((s) => s.undo)
   const redo = useStore((s) => s.redo)
@@ -142,6 +144,15 @@ export default function Toolbar() {
           <TbButton active={showDims} onClick={() => setShowDims(!showDims)} title="Show wall dimensions">
             ⇤⇥
           </TbButton>
+          {!isPlot && (
+            <TbButton
+              active={showRooms}
+              onClick={() => useStore.getState().setShowRooms(!showRooms)}
+              title="Show room names & areas"
+            >
+              <span style={{ fontSize: 10, fontWeight: 700 }}>ft²</span>
+            </TbButton>
+          )}
           {hasGuides && (
             <TbButton
               onClick={() => useStore.getState().clearGuides()}
@@ -191,6 +202,22 @@ export default function Toolbar() {
               }}
             >
               Import site from map…
+            </button>
+            <button
+              onClick={() => {
+                useStore.getState().setPrintOpen(true)
+                setFileMenu(null)
+              }}
+            >
+              Print / PDF…
+            </button>
+            <button
+              onClick={() => {
+                void exportPlanPng()
+                setFileMenu(null)
+              }}
+            >
+              Export plan as PNG
             </button>
             <button
               onClick={() => {

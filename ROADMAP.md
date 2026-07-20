@@ -2,8 +2,12 @@
 
 > Status: **APPROVED** (all phases, 2026-07-19). Build order: Phase 9 first, then 1→8.
 > Shipped so far: **Phase 9 v1** (site-import wizard, parcel click + trace, terrain
-> heightfield, Overture building shells, boundary polygon + georeferencing). Remaining
-> Phase 9 polish: satellite ground drape, more parcel-source coverage.
+> heightfield, Overture building shells, boundary polygon + georeferencing) and
+> **Phase 1** (auto-detected rooms w/ names + live areas + floor totals, invisible room
+> dividers, auto exterior dimension strings w/ click-to-stretch resize, print/PDF sheet,
+> PNG export; shared rasterizer extracted to `src/model/raster.ts`). Phase 1 leftovers
+> rolled forward: interior auto-dims, blueprint display style (Phase 8's display styles).
+> Next: Phase 2 (window types + sills, pocket/barn doors, siding/wainscot, room paint).
 >
 > Basis: three competitive research sweeps (July 2026) covering
 > **consumer floorplanners** (RoomSketcher, Floorplanner, Planner 5D, HomeByMe, Coohom),

@@ -17,6 +17,8 @@ export interface Wall {
   height: number // inches, used by the 3D view
   /** When set, this "wall" is a fence line on the site plan. */
   fence?: FenceType
+  /** Invisible room divider: splits rooms for names/areas/materials; no 3D geometry. */
+  divider?: boolean
 }
 
 export type OpeningType =
@@ -99,6 +101,14 @@ export interface FloorPaint {
   material: FloorMaterial
 }
 
+/** Room-name seed: the detected room containing this point gets the name. */
+export interface RoomTag {
+  id: string
+  x: number
+  y: number
+  name: string
+}
+
 export interface Floor {
   id: string
   name: string
@@ -110,6 +120,7 @@ export interface Floor {
   labels: Label[]
   guides: Guide[]
   paints: FloorPaint[]
+  rooms: RoomTag[]
   roads: Road[]
 }
 
@@ -182,6 +193,7 @@ export type Selection =
   | { kind: 'label'; id: string }
   | { kind: 'guide'; id: string }
   | { kind: 'paint'; id: string }
+  | { kind: 'room'; id: string }
   | { kind: 'road'; id: string }
   | { kind: 'building'; id: string }
   | null
@@ -189,7 +201,7 @@ export type Selection =
 export type Tool =
   | { type: 'select' }
   | { type: 'pan' }
-  | { type: 'wall' }
+  | { type: 'wall'; divider?: boolean }
   | { type: 'box' }
   | { type: 'fence'; fence: FenceType }
   | { type: 'opening'; opening: OpeningType }
@@ -209,6 +221,7 @@ export const emptyFloor = (n: number): Floor => ({
   labels: [],
   guides: [],
   paints: [],
+  rooms: [],
   roads: [],
 })
 
@@ -239,6 +252,7 @@ const migrateFloor = (f: any, i: number): Floor => ({
   labels: f.labels ?? [],
   guides: f.guides ?? [],
   paints: f.paints ?? [],
+  rooms: f.rooms ?? [],
   roads: f.roads ?? [],
 })
 

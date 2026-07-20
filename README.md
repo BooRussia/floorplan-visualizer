@@ -45,6 +45,25 @@ Inside a building, the **floor material paint tool** (`P`) drops a material mark
 room — wood, tile, carpet, concrete, or stone — and the whole room gets that floor in 3D
 (rooms are detected automatically from your walls).
 
+## Plans that read like plans
+
+- **Rooms with live areas** — every enclosed room is detected automatically and shows its
+  square footage; click the label to name it ("Garage", "Kitchen"…) and the name + area
+  stick to the room as walls move. Per-floor and whole-building totals show in the panel;
+  the ft² toolbar button toggles the labels.
+- **Room dividers** — the Wall tool's flyout has an invisible divider: it splits an open
+  space into separately named/measured rooms (and separate floor materials in 3D) without
+  building any 3D wall — perfect for open-plan kitchen/living splits or labeling the shop
+  vs. garage halves of one big bay.
+- **Auto dimensions** — exterior dimension strings on all four sides regenerate as you
+  edit, with per-segment rows and an overall total. **Click any dimension, type a new
+  length**, and everything beyond that segment shifts — across all floors, so upper-story
+  walls stay aligned with the shell.
+- **Print / PDF** (`File ▾`) — a true-to-scale sheet (Letter/Legal/Tabloid/A4/A3,
+  architectural scales from 1/16″=1′ to 1/2″=1′ or fit-to-page) with title block, date,
+  scale bar and all labels/dimensions, printed or saved as PDF from the browser dialog.
+  **Export plan as PNG** downloads the current canvas at 2× resolution.
+
 ![2D editor → 3D view]
 
 ## Run it

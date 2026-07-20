@@ -90,7 +90,7 @@ const IconMeasure = (
   </svg>
 )
 
-type FlyoutKind = 'door' | 'fence' | 'paint'
+type FlyoutKind = 'door' | 'fence' | 'paint' | 'wall'
 
 interface RailItem {
   key: string
@@ -192,10 +192,11 @@ export default function ToolRail() {
         {
           key: 'wall',
           label: 'Wall',
-          title: 'Draw walls (W)',
+          title: 'Draw walls (W) — click for room dividers',
           icon: IconWall,
           active: tool.type === 'wall',
-          onClick: () => setTool({ type: 'wall' }),
+          onClick: () => setTool({ type: 'wall', divider: tool.type === 'wall' ? tool.divider : undefined }),
+          flyout: 'wall' as FlyoutKind,
         },
         {
           key: 'door',
@@ -227,7 +228,16 @@ export default function ToolRail() {
       ]
 
   const flyoutOptions =
-    flyout?.kind === 'door'
+    flyout?.kind === 'wall'
+      ? [
+          { key: 'wall', label: 'Wall', onClick: () => setTool({ type: 'wall' }) },
+          {
+            key: 'divider',
+            label: 'Room divider (invisible)',
+            onClick: () => setTool({ type: 'wall', divider: true }),
+          },
+        ]
+      : flyout?.kind === 'door'
       ? DOOR_TYPES.map((d) => ({
           key: d.key,
           label: d.label,

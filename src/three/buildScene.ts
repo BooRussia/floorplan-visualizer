@@ -15,6 +15,7 @@ import {
 import { dist, sampleRoad, toLocal, wallPointAt, wallSamples } from '../model/geometry'
 import { getGrassTexture, MAT, roofSurfaceMaterial, roomFloorMaterial, surfaceMaterial } from './materials'
 import { buildFurniture } from './furniture3d'
+import { rasterizeFloor, type FloorRaster } from '../model/raster'
 import {
   buildBoundaryLines,
   buildTerrainMesh,
@@ -502,156 +503,6 @@ function inFootprint(p: Pt, items: Furniture[]): boolean {
   return false
 }
 
-/** Occupancy raster of a floor's walls: interior detection + room regions. */
-interface FloorRaster {
-  CELL: number
-  ox: number
-  oy: number
-  W: number
-  H: number
-  solid: Uint8Array
-  outside: Uint8Array
-  region: Int32Array
-  interiorCount: number
-  /** true when the walls seal at least one real room */
-  enclosed: boolean
-}
-
-function rasterizeFloor(
-  walls: Wall[],
-  extraPts: Pt[],
-  grid?: { CELL: number; ox: number; oy: number; W: number; H: number }
-): FloorRaster | null {
-  let CELL: number, ox: number, oy: number, W: number, H: number
-  if (grid) {
-    ;({ CELL, ox, oy, W, H } = grid)
-  } else {
-    const pts: Pt[] = []
-    for (const w of walls) pts.push(...wallSamples(w, 12))
-    if (!pts.length) pts.push(...extraPts)
-    if (!pts.length) return null
-
-    let minX = Infinity,
-      minY = Infinity,
-      maxX = -Infinity,
-      maxY = -Infinity
-    for (const p of pts) {
-      minX = Math.min(minX, p.x)
-      minY = Math.min(minY, p.y)
-      maxX = Math.max(maxX, p.x)
-      maxY = Math.max(maxY, p.y)
-    }
-    const PAD = 3
-    // adaptive resolution: grow the cell size for huge plans instead of bailing out
-    CELL = 3
-    ox = 0
-    oy = 0
-    W = 0
-    H = 0
-    for (;;) {
-      ox = minX - PAD * CELL
-      oy = minY - PAD * CELL
-      W = Math.ceil((maxX - ox + PAD * CELL) / CELL) + 1
-      H = Math.ceil((maxY - oy + PAD * CELL) / CELL) + 1
-      if (W * H <= 600_000 || CELL >= 24) break
-      CELL *= 2
-    }
-    if (W * H > 2_000_000) return null // pathological (miles-wide bounds)
-  }
-
-  const solid = new Uint8Array(W * H)
-  const idx = (cx: number, cy: number) => cy * W + cx
-
-  for (const w of walls) {
-    const samples = wallSamples(w, CELL / 2)
-    const rad = w.thickness / 2 + CELL * 0.45
-    const rc = Math.ceil(rad / CELL)
-    const pts2: Pt[] = []
-    for (let i = 0; i < samples.length - 1; i++) {
-      const a = samples[i]
-      const b = samples[i + 1]
-      const n = Math.max(1, Math.ceil(dist(a, b) / (CELL / 2)))
-      for (let k = 0; k <= n; k++) {
-        pts2.push({ x: a.x + ((b.x - a.x) * k) / n, y: a.y + ((b.y - a.y) * k) / n })
-      }
-    }
-    for (const p of pts2) {
-      const cx = Math.round((p.x - ox) / CELL)
-      const cy = Math.round((p.y - oy) / CELL)
-      for (let dy = -rc; dy <= rc; dy++) {
-        for (let dx = -rc; dx <= rc; dx++) {
-          const x = cx + dx
-          const y = cy + dy
-          if (x < 0 || y < 0 || x >= W || y >= H) continue
-          if (Math.hypot(dx * CELL, dy * CELL) <= rad) solid[idx(x, y)] = 1
-        }
-      }
-    }
-  }
-
-  // flood the outside
-  const outside = new Uint8Array(W * H)
-  const stack: number[] = [0]
-  outside[0] = 1
-  while (stack.length) {
-    const i = stack.pop()!
-    const cx = i % W
-    const cy = (i / W) | 0
-    for (const [dx, dy] of [
-      [1, 0],
-      [-1, 0],
-      [0, 1],
-      [0, -1],
-    ]) {
-      const x = cx + dx
-      const y = cy + dy
-      if (x < 0 || y < 0 || x >= W || y >= H) continue
-      const j = idx(x, y)
-      if (!outside[j] && !solid[j]) {
-        outside[j] = 1
-        stack.push(j)
-      }
-    }
-  }
-
-  let interiorCount = 0
-  for (let i = 0; i < W * H; i++) if (!solid[i] && !outside[i]) interiorCount++
-  const enclosed = interiorCount > 30
-  const isInterior = (i: number) => (enclosed ? !solid[i] && !outside[i] : !solid[i])
-
-  // label connected interior regions (rooms) so paint seeds can assign materials
-  const region = new Int32Array(W * H).fill(-1)
-  let regionCount = 0
-  for (let i = 0; i < W * H; i++) {
-    if (region[i] !== -1 || !isInterior(i)) continue
-    const stack2 = [i]
-    region[i] = regionCount
-    while (stack2.length) {
-      const j = stack2.pop()!
-      const cx = j % W
-      const cy = (j / W) | 0
-      for (const [dx, dy] of [
-        [1, 0],
-        [-1, 0],
-        [0, 1],
-        [0, -1],
-      ]) {
-        const x = cx + dx
-        const y = cy + dy
-        if (x < 0 || y < 0 || x >= W || y >= H) continue
-        const k = idx(x, y)
-        if (region[k] === -1 && isInterior(k)) {
-          region[k] = regionCount
-          stack2.push(k)
-        }
-      }
-    }
-    regionCount++
-  }
-
-  return { CELL, ox, oy, W, H, solid, outside, region, interiorCount, enclosed }
-}
-
 /**
  * Wood floor + structural slab for one story, from a prepared raster.
  * level 0 gets a ground slab below grade; upper levels get a story-gap band.
@@ -664,7 +515,8 @@ function buildFloorSurface(
   holes: Furniture[],
   raster: FloorRaster,
   rooms: FloorRaster | null,
-  roofY?: number
+  roofY?: number,
+  matRaster?: FloorRaster | null
 ) {
   const { CELL, ox, oy, W, H, solid, outside, region, enclosed } = raster
   const idx = (cx: number, cy: number) => cy * W + cx
@@ -675,8 +527,11 @@ function buildFloorSurface(
     y: oy + cy * CELL + CELL / 2,
   })
 
+  // Room dividers split MATERIAL regions without adding geometry: material lookup
+  // runs on matRegion (walls + dividers, same grid) while floor/slab quads use `region`.
+  const matRegion = matRaster && matRaster.W === W && matRaster.H === H ? matRaster.region : region
   let regionCount = 0
-  for (let i = 0; i < W * H; i++) if (region[i] >= regionCount) regionCount = region[i] + 1
+  for (let i = 0; i < W * H; i++) if (matRegion[i] >= regionCount) regionCount = matRegion[i] + 1
 
   // Default material per region: on upper stories, regions with no cell sealed by
   // this story's OWN walls read as flat deck/roof; rooms default to wood.
@@ -686,7 +541,7 @@ function buildFloorSurface(
   )
   if (useRooms) {
     for (let i = 0; i < W * H; i++) {
-      const r = region[i]
+      const r = matRegion[i]
       if (r >= 0 && !rooms!.solid[i] && !rooms!.outside[i]) regionMaterial[r] = 'wood'
     }
   }
@@ -696,7 +551,7 @@ function buildFloorSurface(
     const cx = Math.round((paint.x - ox) / CELL)
     const cy = Math.round((paint.y - oy) / CELL)
     if (cx < 0 || cy < 0 || cx >= W || cy >= H) continue
-    const r = region[idx(cx, cy)]
+    const r = matRegion[idx(cx, cy)]
     if (r >= 0) regionMaterial[r] = paint.material
   }
 
@@ -725,7 +580,7 @@ function buildFloorSurface(
       const i = cx < W ? idx(cx, cy) : -1
       const holed = cx < W && holes.length > 0 && inFootprint(cellCenter(cx, cy), holes)
       const interior = cx < W && isInterior(i) && !holed
-      const cellMat = interior ? regionMaterial[region[i]] ?? 'wood' : ''
+      const cellMat = interior ? regionMaterial[matRegion[i]] ?? 'wood' : ''
       // 'open to below' regions have no floor and no structural band on upper stories
       const openCell = level > 0 && cellMat === 'open'
       const slabby = cx < W && ((interior && !openCell) || (solid[i] === 1 && !holed))
@@ -1003,31 +858,36 @@ function buildBuilding(
       ...floor.furniture.map((f) => ({ x: f.x, y: f.y })),
       ...holes.map((h) => ({ x: h.x, y: h.y })),
     ]
-    const unionWalls = k > 0 && footprintWalls.length ? [...footprintWalls, ...floor.walls] : floor.walls
+    // dividers never make 3D geometry — they only split material regions below
+    const geomWalls = floor.walls.filter((w) => !w.divider)
+    const unionWalls = k > 0 && footprintWalls.length ? [...footprintWalls, ...geomWalls] : geomWalls
     const union = rasterizeFloor(unionWalls, extras)
-    const own =
-      k > 0 && union
-        ? rasterizeFloor(floor.walls, extras, {
-            CELL: union.CELL,
-            ox: union.ox,
-            oy: union.oy,
-            W: union.W,
-            H: union.H,
-          })
+    const grid = union
+      ? { CELL: union.CELL, ox: union.ox, oy: union.oy, W: union.W, H: union.H }
+      : undefined
+    const own = k > 0 && union ? rasterizeFloor(geomWalls, extras, grid) : null
+    const hasDividers = floor.walls.length !== geomWalls.length
+    const matRaster =
+      hasDividers && union
+        ? rasterizeFloor(
+            k > 0 && footprintWalls.length ? [...footprintWalls, ...floor.walls] : floor.walls,
+            extras,
+            grid
+          )
         : null
-    if (union) buildFloorSurface(fg, floor, k, holes, union, own, roofY)
-    footprintWalls = union && union.enclosed ? unionWalls : floor.walls
+    if (union) buildFloorSurface(fg, floor, k, holes, union, own, roofY, matRaster)
+    footprintWalls = union && union.enclosed ? unionWalls : geomWalls
 
     // walls: extend full-height walls up through the story gap so they meet the
     // underside of the next floor. "Full height" = at least the story height OR the
     // tallest wall on the floor (covers walls shorter than an increased story
     // height). Never cut taller walls down.
-    const maxWallH = floor.walls.reduce((m, w) => Math.max(m, w.height), 0)
+    const maxWallH = geomWalls.reduce((m, w) => Math.max(m, w.height), 0)
     const fullH = Math.min(floor.height, maxWallH || floor.height)
     const extend = isTop
       ? undefined
       : { to: Math.max(floor.height + STORY_GAP, 0), ifAtLeast: fullH }
-    for (const w of floor.walls) buildWall(fg, w, floor.openings, extend, { wallId: w.id, floor: k })
+    for (const w of geomWalls) buildWall(fg, w, floor.openings, extend, { wallId: w.id, floor: k })
 
     // pitched roof over the top story: prefer the story's own sealed outline
     // (e.g. the apartment) — the deck around it stays a flat roof
@@ -1161,6 +1021,7 @@ export function buildProject(
   // site layer: roads under everything, then fences + landscape/surfaces
   for (const r of project.site.roads) buildRoad(group, r, gy)
   for (const w of project.site.walls) {
+    if (w.divider) continue
     if (w.fence) buildFence(group, w, project.site.openings, gy)
     else buildWall(group, w, project.site.openings)
   }

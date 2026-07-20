@@ -45,7 +45,9 @@ interface StoreState {
   tool: Tool
   view: '2d' | '3d'
   siteImportOpen: boolean
+  printOpen: boolean
   showDims: boolean
+  showRooms: boolean
   /** magnet: endpoint/guide/angle snapping while drawing (S toggles; Alt overrides) */
   snapOn: boolean
   theme: 'light' | 'dark'
@@ -55,7 +57,9 @@ interface StoreState {
   setTool: (t: Tool) => void
   setView: (v: '2d' | '3d') => void
   setSiteImportOpen: (b: boolean) => void
+  setPrintOpen: (b: boolean) => void
   setShowDims: (b: boolean) => void
+  setShowRooms: (b: boolean) => void
   setSnapOn: (b: boolean) => void
   setTheme: (t: 'light' | 'dark') => void
   select: (s: Selection) => void
@@ -97,6 +101,10 @@ interface StoreState {
   clearGuides: () => void
   addPaint: (x: number, y: number, material: FloorMaterial) => string
   updatePaint: (id: string, patch: Partial<FloorPaint>) => void
+  addRoomTag: (x: number, y: number, name?: string) => string
+  updateRoomTag: (id: string, patch: Partial<import('./types').RoomTag>) => void
+  /** Stretch the active building: shift everything at/beyond `from` along axis by delta (all floors). */
+  stretchBuilding: (axis: 'x' | 'y', from: number, delta: number) => void
   addRoad: (road: Omit<Road, 'id'>) => string
   updateRoad: (id: string, patch: Partial<Road>) => void
   deleteSelected: () => void
@@ -158,7 +166,9 @@ export const useStore = create<StoreState>((set, get) => {
     tool: { type: 'select' },
     view: '2d',
     siteImportOpen: false,
+    printOpen: false,
     showDims: true,
+    showRooms: true,
     snapOn: true,
     theme: (localStorage.getItem('fv-theme') === 'dark' ? 'dark' : 'light') as 'light' | 'dark',
     past: [],
@@ -167,7 +177,9 @@ export const useStore = create<StoreState>((set, get) => {
     setTool: (tool) => set({ tool, selection: null }),
     setView: (view) => set({ view }),
     setSiteImportOpen: (siteImportOpen) => set({ siteImportOpen }),
+    setPrintOpen: (printOpen) => set({ printOpen }),
     setShowDims: (showDims) => set({ showDims }),
+    setShowRooms: (showRooms) => set({ showRooms }),
     setSnapOn: (snapOn) => set({ snapOn }),
     setTheme: (theme) => {
       localStorage.setItem('fv-theme', theme)
@@ -453,6 +465,49 @@ export const useStore = create<StoreState>((set, get) => {
         ...f,
         paints: f.paints.map((p) => (p.id === id ? { ...p, ...patch } : p)),
       })),
+    addRoomTag: (x, y, name = 'Room') => {
+      const id = uid('room')
+      get().checkpoint()
+      onFloor((f) => ({ ...f, rooms: [...f.rooms, { id, x, y, name }] }))
+      return id
+    },
+    updateRoomTag: (id, patch) =>
+      onFloor((f) => ({
+        ...f,
+        rooms: f.rooms.map((r) => (r.id === id ? { ...r, ...patch } : r)),
+      })),
+    stretchBuilding: (axis, from, delta) => {
+      const s = get()
+      if (s.mode.scope !== 'building' || !delta) return
+      s.checkpoint()
+      const bi = s.mode.index
+      const eps = 0.75
+      const mv = (v: number) => (v >= from - eps ? v + delta : v)
+      const mvPt = <T extends { x: number; y: number }>(p: T): T =>
+        axis === 'x' ? { ...p, x: mv(p.x) } : { ...p, y: mv(p.y) }
+      set((st) => ({
+        project: {
+          ...st.project,
+          buildings: st.project.buildings.map((b, i) =>
+            i === bi
+              ? {
+                  ...b,
+                  floors: b.floors.map((f) => ({
+                    ...f,
+                    walls: f.walls.map((w) => ({ ...w, a: mvPt(w.a), b: mvPt(w.b) })),
+                    furniture: f.furniture.map(mvPt),
+                    labels: f.labels.map(mvPt),
+                    guides: f.guides.map(mvPt),
+                    paints: f.paints.map(mvPt),
+                    rooms: f.rooms.map(mvPt),
+                    roads: f.roads.map((r) => ({ ...r, nodes: r.nodes.map(mvPt) })),
+                  })),
+                }
+              : b
+          ),
+        },
+      }))
+    },
     addRoad: (road) => {
       const id = uid('road')
       get().checkpoint()
@@ -488,6 +543,8 @@ export const useStore = create<StoreState>((set, get) => {
           p.guides = p.guides.filter((g) => g.id !== selection.id)
         } else if (selection.kind === 'paint') {
           p.paints = p.paints.filter((g) => g.id !== selection.id)
+        } else if (selection.kind === 'room') {
+          p.rooms = p.rooms.filter((r) => r.id !== selection.id)
         } else if (selection.kind === 'road') {
           p.roads = p.roads.filter((r) => r.id !== selection.id)
         }
