@@ -12,6 +12,9 @@ import {
   type FloorMaterial,
   type OpeningType,
   type Road,
+  type SidingSpec,
+  type SidingType,
+  type WindowStyle,
 } from '../model/types'
 
 const FENCE_LABELS: Record<FenceType, string> = {
@@ -63,11 +66,128 @@ function LenInput({
   )
 }
 
+const SIDING_TYPES: { key: SidingType; label: string }[] = [
+  { key: 'paint', label: 'Painted' },
+  { key: 'lap', label: 'Lap siding' },
+  { key: 'board-batten', label: 'Board & batten' },
+  { key: 'metal', label: 'Metal panel' },
+  { key: 'brick', label: 'Brick' },
+  { key: 'stone', label: 'Stone' },
+]
+
+const SIDING_COLORS = [
+  '#f5f2ea', '#e8e3d5', '#cfd2d4', '#9aa0a4', '#5b6167', '#3a3f45',
+  '#8f3b32', '#a94e42', '#4a5d47', '#3f5a73', '#b98d5e', '#7a6a55',
+]
+
+const TRIM_COLORS = ['#ffffff', '#efece2', '#3a3f45', '#1f2327', '#6d4c35']
+
+const ROOM_WALL_COLORS = [
+  '#f7f4ec', '#efe9db', '#e6dfd0', '#dfe4e6', '#c9d4d9', '#b7c4b1',
+  '#a8b8c8', '#d9c3a5', '#c98d6b', '#9f5b4d', '#6b7f8c', '#4a5568',
+]
+
+function Swatches({
+  colors,
+  value,
+  onPick,
+}: {
+  colors: string[]
+  value?: string
+  onPick: (c: string) => void
+}) {
+  return (
+    <div className="swatch-row">
+      {colors.map((c) => (
+        <button
+          key={c}
+          className={`swatch ${value === c ? 'active' : ''}`}
+          style={{ background: c }}
+          title={c}
+          onClick={() => onPick(c)}
+        />
+      ))}
+    </div>
+  )
+}
+
+function SidingSection({
+  siding,
+  onChange,
+}: {
+  siding?: SidingSpec
+  onChange: (s: SidingSpec | undefined) => void
+}) {
+  if (!siding) {
+    return (
+      <button className="mini-btn" onClick={() => onChange({ type: 'lap', color: '#e8e3d5' })}>
+        ＋ Exterior siding…
+      </button>
+    )
+  }
+  return (
+    <div className="prop-field">
+      <span>Exterior siding</span>
+      <select
+        value={siding.type}
+        onChange={(e) => onChange({ ...siding, type: e.target.value as SidingType })}
+      >
+        {SIDING_TYPES.map((s) => (
+          <option key={s.key} value={s.key}>
+            {s.label}
+          </option>
+        ))}
+      </select>
+      <Swatches colors={SIDING_COLORS} value={siding.color} onPick={(color) => onChange({ ...siding, color })} />
+      <label className="site-import-opt" style={{ marginTop: 4 }}>
+        <input
+          type="checkbox"
+          checked={!!siding.wainscot}
+          onChange={(e) =>
+            onChange({
+              ...siding,
+              wainscot: e.target.checked ? { color: '#8f3b32', height: 48 } : undefined,
+            })
+          }
+        />
+        Wainscot band
+      </label>
+      {siding.wainscot && (
+        <>
+          <Swatches
+            colors={SIDING_COLORS}
+            value={siding.wainscot.color}
+            onPick={(color) => onChange({ ...siding, wainscot: { ...siding.wainscot!, color } })}
+          />
+          <LenInput
+            label="Wainscot height"
+            value={siding.wainscot.height}
+            onCommit={(v) =>
+              onChange({ ...siding, wainscot: { ...siding.wainscot!, height: Math.min(96, Math.max(12, v)) } })
+            }
+          />
+        </>
+      )}
+      <span style={{ marginTop: 4 }}>Trim</span>
+      <Swatches
+        colors={TRIM_COLORS}
+        value={siding.trim}
+        onPick={(trim) => onChange({ ...siding, trim: trim === siding.trim ? undefined : trim })}
+      />
+      <button className="mini-btn" onClick={() => onChange(undefined)}>
+        Remove siding
+      </button>
+    </div>
+  )
+}
+
 const OPENING_LABELS: Record<OpeningType, string> = {
   door: 'Single door',
   'double-door': 'Double door',
   sliding: 'Sliding glass',
   bifold: 'Bifold door',
+  pocket: 'Pocket door',
+  barn: 'Barn door',
   opening: 'Cased opening',
   window: 'Window',
   garage: 'Garage door',
@@ -322,6 +442,13 @@ export default function PropertiesPanel() {
               </select>
             </div>
           </div>
+          <SidingSection
+            siding={b.siding}
+            onChange={(siding) => {
+              st.checkpoint()
+              st.updateBuilding(b.id, { siding })
+            }}
+          />
           <button className="mini-btn" onClick={() => st.enterBuilding(idx)}>
             Edit floor plans →
           </button>
@@ -465,9 +592,21 @@ export default function PropertiesPanel() {
               <b>{Math.round(room.areaSqIn / 144)} sq ft</b>
             </div>
           )}
+          <div className="prop-field">
+            <span>Wall color (3D)</span>
+            <Swatches
+              colors={ROOM_WALL_COLORS}
+              value={r.wallColor}
+              onPick={(c) => {
+                st.checkpoint()
+                st.updateRoomTag(r.id, { wallColor: c === r.wallColor ? undefined : c })
+              }}
+            />
+          </div>
           <p className="props-tip">
             Rooms are detected automatically from your walls — the name sticks to this room as
-            the plan changes. Use a room divider (Wall tool ▸) to split open spaces.
+            the plan changes. Use a room divider (Wall tool ▸) to split open spaces. Pick a
+            wall color to paint this room's walls in the 3D view (click again to clear).
           </p>
           <button className="danger-btn" onClick={() => st.deleteSelected()}>
             Remove name
@@ -740,6 +879,50 @@ export default function PropertiesPanel() {
                 </button>
               ))}
             </div>
+          )}
+          {o.type === 'window' && (
+            <>
+              <label className="prop-field">
+                <span>Style</span>
+                <select
+                  value={o.style ?? 'slider'}
+                  onChange={(e) => {
+                    st.checkpoint()
+                    st.updateOpening(o.id, { style: e.target.value as WindowStyle })
+                  }}
+                >
+                  <option value="slider">Slider</option>
+                  <option value="single-hung">Single-hung</option>
+                  <option value="casement">Casement</option>
+                  <option value="fixed">Fixed</option>
+                  <option value="picture">Picture</option>
+                </select>
+              </label>
+              <LenInput
+                label="Sill height"
+                value={o.sill ?? 30}
+                onCommit={(v) => {
+                  st.checkpoint()
+                  const sill = Math.min(96, Math.max(2, v))
+                  st.updateOpening(o.id, {
+                    sill,
+                    ...(o.height != null && o.height <= sill + 8 ? { height: sill + 8 } : {}),
+                  })
+                }}
+              />
+              <LenInput
+                label="Head height"
+                value={o.height ?? 78}
+                onCommit={(v) => {
+                  st.checkpoint()
+                  st.updateOpening(o.id, { height: Math.min(180, Math.max((o.sill ?? 30) + 8, v)) })
+                }}
+              />
+              <p className="props-tip">
+                Sill = bottom of the glass off the floor; head = top. A picture window over a
+                camper bay might be sill 60", head 110".
+              </p>
+            </>
           )}
           {o.type === 'garage' && (
             <>

@@ -26,10 +26,14 @@ export type OpeningType =
   | 'double-door'
   | 'sliding'
   | 'bifold'
+  | 'pocket'
+  | 'barn'
   | 'opening'
   | 'window'
   | 'garage'
   | 'gate'
+
+export type WindowStyle = 'fixed' | 'single-hung' | 'slider' | 'casement' | 'picture'
 
 export interface Opening {
   id: string
@@ -42,8 +46,12 @@ export interface Opening {
   flipSwing: boolean
   /** Hinge on the other jamb */
   flipHinge: boolean
-  /** Head height in inches (garage doors); falls back to the standard head height */
+  /** Head height in inches (garage doors + windows); falls back to the standard head height */
   height?: number
+  /** Windows: sash/mullion style */
+  style?: WindowStyle
+  /** Windows: sill height in inches (default 30) */
+  sill?: number
 }
 
 export interface Furniture {
@@ -107,6 +115,8 @@ export interface RoomTag {
   x: number
   y: number
   name: string
+  /** Interior wall paint for this room's wall faces (3D) */
+  wallColor?: string
 }
 
 export interface Floor {
@@ -127,6 +137,18 @@ export interface Floor {
 export type RoofStyle = 'flat' | 'gable' | 'hip'
 export type RoofMaterial = 'shingles' | 'metal'
 
+export type SidingType = 'paint' | 'lap' | 'board-batten' | 'metal' | 'brick' | 'stone'
+
+/** Exterior finish for a building's outside wall faces. */
+export interface SidingSpec {
+  type: SidingType
+  color: string
+  /** Lower accent band with its own color (pole-barn wainscot) */
+  wainscot?: { color: string; height: number }
+  /** Trim color: window/door frames + gable ends */
+  trim?: string
+}
+
 export interface RoofSpec {
   style: RoofStyle
   /** rise per 12 of run (4 = 4:12) */
@@ -145,6 +167,7 @@ export interface Building {
   rot: number // degrees clockwise
   floors: Floor[]
   roof: RoofSpec
+  siding?: SidingSpec
 }
 
 /** Geographic anchor: plot-local (0,0) sits at this lat/lon corner, north-up (+y = south). */
@@ -299,6 +322,9 @@ export function migrateProject(raw: any): Project | null {
           material: b.roof?.material ?? 'shingles',
           ridge: b.roof?.ridge ?? 'auto',
         },
+        ...(b.siding && typeof b.siding.color === 'string'
+          ? { siding: b.siding as SidingSpec }
+          : {}),
       })),
     }
   }

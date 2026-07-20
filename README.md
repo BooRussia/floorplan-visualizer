@@ -45,6 +45,20 @@ Inside a building, the **floor material paint tool** (`P`) drops a material mark
 room — wood, tile, carpet, concrete, or stone — and the whole room gets that floor in 3D
 (rooms are detected automatically from your walls).
 
+## Openings & finishes
+
+- **Window styles** — slider, single-hung, casement, fixed, or picture, each with its own
+  sash/mullion look in 2D and 3D, plus per-window **sill and head heights** (a high
+  picture window over a camper bay is sill 60", head 110").
+- **Pocket and barn doors** in the door flyout — the pocket slab tucks into a dashed wall
+  cavity, the barn door hangs on a track outside the wall in both views.
+- **Exterior siding** (Building panel) — painted, lap, board & batten, metal panel, brick,
+  or stone with a 12-color palette; an optional **wainscot band** with its own color and
+  height (the classic pole-barn look) that breaks around doors; and a **trim color** that
+  tints every window/door frame. Siding runs up gable ends and extended upper walls.
+- **Room wall colors** — pick a paint color on any named room and its wall faces tint in
+  the 3D dollhouse.
+
 ## Plans that read like plans
 
 - **Rooms with live areas** — every enclosed room is detected automatically and shows its

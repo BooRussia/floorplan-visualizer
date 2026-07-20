@@ -214,3 +214,11 @@ export function regionAt(r: FloorRaster, x: number, y: number): number {
   if (cx < 0 || cy < 0 || cx >= r.W || cy >= r.H) return -1
   return r.region[cy * r.W + cx]
 }
+
+/** Whether a world point falls in the outside flood (or off-grid). */
+export function outsideAt(r: FloorRaster, x: number, y: number): boolean {
+  const cx = Math.round((x - r.ox) / r.CELL)
+  const cy = Math.round((y - r.oy) / r.CELL)
+  if (cx < 0 || cy < 0 || cx >= r.W || cy >= r.H) return true
+  return r.outside[cy * r.W + cx] === 1
+}

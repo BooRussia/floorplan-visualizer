@@ -13,9 +13,17 @@ import {
   type Wall,
 } from '../model/types'
 import { dist, sampleRoad, toLocal, wallPointAt, wallSamples } from '../model/geometry'
-import { getGrassTexture, MAT, roofSurfaceMaterial, roomFloorMaterial, surfaceMaterial } from './materials'
+import {
+  getGrassTexture,
+  MAT,
+  roofSurfaceMaterial,
+  roomFloorMaterial,
+  sidingMaterial,
+  surfaceMaterial,
+  tintedMaterial,
+} from './materials'
 import { buildFurniture } from './furniture3d'
-import { rasterizeFloor, type FloorRaster } from '../model/raster'
+import { outsideAt, rasterizeFloor, regionAt, type FloorRaster } from '../model/raster'
 import {
   buildBoundaryLines,
   buildTerrainMesh,
@@ -62,6 +70,18 @@ function mesh(geo: THREE.BufferGeometry, mat: THREE.Material, cast = true, recei
   return m
 }
 
+/** Frame/trim material — swapped per building when a trim color is set. */
+let FRAME: THREE.Material = MAT.frame
+
+/** Per-side face materials for a wall box: plus = the wall's local +z side
+ * (plan-left of a→b), minus = the other. UVs on those faces are world-scaled
+ * (96" per repeat) and offset by u0/y0 so patterns align across segments. */
+interface WallFaceMats {
+  plus?: THREE.Material
+  minus?: THREE.Material
+  u0?: number
+}
+
 /** Axis box between two plan points (plan y -> world z), from y0 to y1. */
 function wallBox(
   group: THREE.Group,
@@ -73,7 +93,8 @@ function wallBox(
   mat: THREE.Material,
   extendStart = 0,
   extendEnd = 0,
-  tag?: { wallId: string; floor: number }
+  tag?: { wallId: string; floor: number },
+  faces?: WallFaceMats
 ) {
   const L = dist(a, b) + extendStart + extendEnd
   if (L <= 0.01 || y1 - y0 <= 0.01) return
@@ -83,7 +104,22 @@ function wallBox(
   const midS = (dist(a, b) + extendEnd - extendStart) / 2
   const cx = a.x + ux * midS
   const cz = a.y + uy * midS
-  const m = mesh(new THREE.BoxGeometry(L, y1 - y0, thickness), mat)
+  const geo = new THREE.BoxGeometry(L, y1 - y0, thickness)
+  let material: THREE.Material | THREE.Material[] = mat
+  if (faces && (faces.plus || faces.minus)) {
+    // world-scale the side-face UVs so siding courses align across wall segments
+    const uv = geo.getAttribute('uv') as THREE.BufferAttribute
+    for (const start of [16, 20]) {
+      for (let i = start; i < start + 4; i++) {
+        const u = uv.getX(i)
+        const v = uv.getY(i)
+        uv.setXY(i, ((faces.u0 ?? 0) - extendStart) / 96 + (u * L) / 96, (y0 + v * (y1 - y0)) / 96)
+      }
+    }
+    uv.needsUpdate = true
+    material = [mat, mat, mat, mat, faces.plus ?? mat, faces.minus ?? mat]
+  }
+  const m = mesh(geo, material as THREE.Material, true, true)
   m.position.set(cx, (y0 + y1) / 2, cz)
   m.rotation.y = -ang
   if (tag) m.userData.wallTag = tag
@@ -118,6 +154,55 @@ function buildDoorLeaves(group: THREE.Group, w: Wall, o: Opening, s0: number, s1
     group.add(pivot)
   }
 
+  if (o.type === 'pocket') {
+    // slab half-tucked into the wall cavity, sliding from the hinge side
+    const from = o.flipHinge ? s1 : s0
+    const dir = o.flipHinge ? -1 : 1
+    const slabW = width * 0.55
+    const start = alongWall(w, from + (dir * slabW) / 2 - dir * width * 0.18)
+    const holder = new THREE.Group()
+    holder.position.set(start.x, 0, start.y)
+    holder.rotation.y = -ang
+    const slab = mesh(new THREE.BoxGeometry(slabW, leafH, 1.4), MAT.doorLeaf)
+    slab.position.set(0, leafH / 2 + 0.2, 0)
+    holder.add(slab)
+    const pull = mesh(new THREE.BoxGeometry(1, 4.5, 0.5), MAT.steel)
+    pull.position.set((dir * slabW) / 2 - dir * 2, 38, 0.9)
+    holder.add(pull)
+    group.add(holder)
+    return
+  }
+  if (o.type === 'barn') {
+    // surface-mounted slab on the swing side + track bar above the opening
+    const mid = alongWall(w, (s0 + s1) / 2)
+    const holder = new THREE.Group()
+    holder.position.set(mid.x, 0, mid.y)
+    holder.rotation.y = -ang
+    const z = side * (w.thickness / 2 + 1.6)
+    const slabW = width * 1.08
+    // parked slightly off-center toward the hinge side so the opening reads open-able
+    const shift = (o.flipHinge ? 1 : -1) * width * 0.18
+    const slab = mesh(new THREE.BoxGeometry(slabW, leafH + 2, 1.7), MAT.doorLeaf)
+    slab.position.set(shift, (leafH + 2) / 2 + 0.2, z)
+    holder.add(slab)
+    // X-brace planks
+    for (const sgn of [1, -1]) {
+      const brace = mesh(new THREE.BoxGeometry(Math.hypot(slabW - 6, (leafH - 10) / 2), 3, 0.6), MAT.doorLeaf)
+      brace.position.set(shift, leafH / 2, z + side * 1.2)
+      brace.rotation.z = sgn * Math.atan2((leafH - 10) / 2, slabW - 6)
+      holder.add(brace)
+    }
+    const track = mesh(new THREE.BoxGeometry(width * 2, 1.6, 0.8), MAT.steel)
+    track.position.set(0, leafH + 5, z)
+    holder.add(track)
+    for (const hx of [shift - slabW / 2 + 3, shift + slabW / 2 - 3]) {
+      const hanger = mesh(new THREE.BoxGeometry(1.2, 4.5, 0.6), MAT.steel)
+      hanger.position.set(hx, leafH + 2.6, z + 0.3)
+      holder.add(hanger)
+    }
+    group.add(holder)
+    return
+  }
   if (o.type === 'door') {
     const hingeS = o.flipHinge ? s1 : s0
     makeLeaf(hingeS, width, o.flipHinge ? 180 - side * 72 : side * 72)
@@ -174,12 +259,12 @@ function buildDoorLeaves(group: THREE.Group, w: Wall, o: Opening, s0: number, s1
       gl.position.set(0, ph / 2, 0)
       frame.add(gl)
       for (const fy of [1, ph - 1.5]) {
-        const bar = mesh(new THREE.BoxGeometry(pw, 2, 1.4), MAT.frame)
+        const bar = mesh(new THREE.BoxGeometry(pw, 2, 1.4), FRAME)
         bar.position.set(0, fy + 0.75, 0)
         frame.add(bar)
       }
       for (const fx of [-pw / 2 + 0.7, pw / 2 - 0.7]) {
-        const bar = mesh(new THREE.BoxGeometry(1.4, ph, 1.4), MAT.frame)
+        const bar = mesh(new THREE.BoxGeometry(1.4, ph, 1.4), FRAME)
         bar.position.set(fx, ph / 2, 0)
         frame.add(bar)
       }
@@ -235,28 +320,75 @@ function buildGarageDoor(
   group.add(holder)
 }
 
+/** Window sill height for an opening (windows only). */
+const winSill = (o: Opening) => Math.max(2, o.sill ?? WINDOW_SILL)
+const winHead = (o: Opening, wallH: number) => Math.min(o.height ?? WINDOW_HEAD, wallH - 3)
+
 function buildWindow(group: THREE.Group, w: Wall, o: Opening, s0: number, s1: number) {
   const a = alongWall(w, s0)
   const b = alongWall(w, s1)
-  const head = Math.min(WINDOW_HEAD, w.height - 6)
-  wallBox(group, a, b, WINDOW_SILL - 1.2, WINDOW_SILL, w.thickness + 2, MAT.frame)
+  const sill = winSill(o)
+  const head = Math.max(sill + 8, winHead(o, w.height))
+  const style = o.style ?? 'slider'
+  // sill ledge
+  wallBox(group, a, b, sill - 1.2, sill, w.thickness + 2, FRAME)
   const mid = alongWall(w, (s0 + s1) / 2)
   const ang = Math.atan2(w.b.y - w.a.y, w.b.x - w.a.x)
   const holder = new THREE.Group()
   holder.position.set(mid.x, 0, mid.y)
   holder.rotation.y = -ang
   const width = s1 - s0
-  const gl = mesh(new THREE.BoxGeometry(width - 1, head - WINDOW_SILL, 0.6), MAT.glass, false)
-  gl.position.set(0, (head + WINDOW_SILL) / 2, 0)
+  const h = head - sill
+  const cy = (head + sill) / 2
+
+  const bar = (bw: number, bh: number, x: number, y: number, z = 0, depth = 1.4) => {
+    const m = mesh(new THREE.BoxGeometry(bw, bh, depth), FRAME)
+    m.position.set(x, y, z)
+    holder.add(m)
+  }
+
+  const gl = mesh(new THREE.BoxGeometry(width - 1, h, 0.6), MAT.glass, false)
+  gl.position.set(0, cy, 0)
   holder.add(gl)
-  const mull = mesh(new THREE.BoxGeometry(1.2, head - WINDOW_SILL, 1.4), MAT.frame)
-  mull.position.set(0, (head + WINDOW_SILL) / 2, 0)
-  holder.add(mull)
+  // jambs + head/sill rails on every style
   for (const fx of [-width / 2 + 0.6, width / 2 - 0.6]) {
-    const jamb = mesh(new THREE.BoxGeometry(1.2, head - WINDOW_SILL, w.thickness + 1), MAT.frame)
-    jamb.position.set(fx, (head + WINDOW_SILL) / 2, 0)
+    const jamb = mesh(new THREE.BoxGeometry(1.2, h, w.thickness + 1), FRAME)
+    jamb.position.set(fx, cy, 0)
     holder.add(jamb)
   }
+  bar(width - 1, 1.6, 0, head - 0.8)
+  bar(width - 1, 1.6, 0, sill + 0.8)
+
+  if (style === 'slider') {
+    // two sliding panes: center mull, one pane proud of the other
+    bar(1.4, h, 0, cy)
+    bar(width / 2 - 1, 1.1, -width / 4, cy, 0.9, 0.8)
+  } else if (style === 'single-hung') {
+    // horizontal meeting rail; lower sash sits proud
+    bar(width - 1, 1.8, 0, cy)
+    const lower = mesh(new THREE.BoxGeometry(width - 2, h / 2 - 1.6, 0.5), MAT.glass, false)
+    lower.position.set(0, sill + h / 4, 0.8)
+    holder.add(lower)
+    for (const fx of [-width / 2 + 1.2, width / 2 - 1.2]) bar(1.1, h / 2 - 1, fx, sill + h / 4, 0.9, 0.9)
+    bar(width - 2, 1.2, 0, sill + h / 2 - 1.4, 0.9, 0.9)
+    bar(width - 2, 1.2, 0, sill + 1.6, 0.9, 0.9)
+  } else if (style === 'casement') {
+    // two hinged panes with a center mull and slim sash frames
+    bar(1.6, h, 0, cy)
+    for (const sgn of [-1, 1]) {
+      for (const fx of [sgn * 2, sgn * (width / 2 - 1.4)]) bar(1.0, h - 2, fx, cy, 0.8, 0.8)
+      bar(width / 2 - 3, 1.0, (sgn * width) / 4, head - 2, 0.8, 0.8)
+      bar(width / 2 - 3, 1.0, (sgn * width) / 4, sill + 2, 0.8, 0.8)
+      // crank handle at the sill
+      const crank = mesh(new THREE.BoxGeometry(2.2, 1, 1), MAT.steel)
+      crank.position.set((sgn * width) / 4, sill + 2.6, 1.4)
+      holder.add(crank)
+    }
+  } else if (style === 'fixed') {
+    bar(1.2, h, 0, cy) // single center mull (classic double-lite look)
+  }
+  // picture: clean uninterrupted glass — no mullions
+
   group.add(holder)
 }
 
@@ -428,6 +560,44 @@ function buildFence(group: THREE.Group, w: Wall, openings: Opening[], gy: Ground
   }
 }
 
+/** Context for resolving what each side of a wall shows: exterior siding, an
+ * interior room's paint color, or the default wall white. */
+interface WallFaceCtx {
+  raster: FloorRaster
+  matRaster: FloorRaster | null
+  roomColors: Map<number, string>
+  siding?: import('../model/types').SidingSpec
+}
+
+/** Resolve the +z / -z face materials for a wall from its surroundings. */
+function resolveFaces(
+  w: Wall,
+  ctx: WallFaceCtx | undefined
+): { plus?: THREE.Material; minus?: THREE.Material; plusOut: boolean; minusOut: boolean } {
+  if (!ctx) return { plusOut: false, minusOut: false }
+  const ang = Math.atan2(w.b.y - w.a.y, w.b.x - w.a.x)
+  const nx = -Math.sin(ang)
+  const ny = Math.cos(ang)
+  const mid = wallPointAt(w, 0.5)
+  const d = w.thickness / 2 + ctx.raster.CELL * 2.5
+  const sideMat = (sign: 1 | -1): { mat?: THREE.Material; out: boolean } => {
+    const px = mid.x + nx * sign * d
+    const py = mid.y + ny * sign * d
+    if (outsideAt(ctx.raster, px, py)) {
+      return {
+        mat: ctx.siding ? sidingMaterial(ctx.siding.type, ctx.siding.color) : undefined,
+        out: true,
+      }
+    }
+    const reg = ctx.matRaster ? regionAt(ctx.matRaster, px, py) : regionAt(ctx.raster, px, py)
+    const color = reg >= 0 ? ctx.roomColors.get(reg) : undefined
+    return { mat: color ? tintedMaterial(color) : undefined, out: false }
+  }
+  const plus = sideMat(1)
+  const minus = sideMat(-1)
+  return { plus: plus.mat, minus: minus.mat, plusOut: plus.out, minusOut: minus.out }
+}
+
 /**
  * extendTo: when this wall belongs to a floor with another story above, full-height
  * walls are extended up to `extendTo` (the underside of the next story's floor) so
@@ -438,19 +608,26 @@ function buildWall(
   w: Wall,
   openings: Opening[],
   extendTo?: { to: number; ifAtLeast: number },
-  tag?: { wallId: string; floor: number }
+  tag?: { wallId: string; floor: number },
+  faceCtx?: WallFaceCtx
 ) {
   const H = w.height
   const extended = !!extendTo && w.height >= extendTo.ifAtLeast - 0.5
   const top = extended ? Math.max(H, extendTo!.to) : H
   const th = w.thickness
   const ext = th / 2 // match the 2D square line caps so corners close
+  const fr = resolveFaces(w, faceCtx)
+  const hasFaces = !!(fr.plus || fr.minus)
+  const facesAt = (u0: number): WallFaceMats | undefined =>
+    hasFaces ? { plus: fr.plus, minus: fr.minus, u0 } : undefined
 
   if (w.bulge) {
     const pts = wallSamples(w, 4)
+    let arc = 0
     for (let i = 0; i < pts.length - 1; i++) {
-      wallBox(group, pts[i], pts[i + 1], 0, top, th, MAT.wall, 0.6, 0.6, tag)
+      wallBox(group, pts[i], pts[i + 1], 0, top, th, MAT.wall, 0.6, 0.6, tag, facesAt(arc))
       if (!extended) wallBox(group, pts[i], pts[i + 1], H, H + 1, th + 0.4, MAT.wallCap, 0.6, 0.6)
+      arc += dist(pts[i], pts[i + 1])
     }
     return
   }
@@ -467,17 +644,17 @@ function buildWall(
   let cursor = 0
   for (const { o, s0, s1 } of ops) {
     if (s0 > cursor) {
-      wallBox(group, alongWall(w, cursor), alongWall(w, s0), 0, top, th, MAT.wall, cursor === 0 ? ext : 0, 0, tag)
+      wallBox(group, alongWall(w, cursor), alongWall(w, s0), 0, top, th, MAT.wall, cursor === 0 ? ext : 0, 0, tag, facesAt(cursor))
     }
     const head =
       o.type === 'window'
-        ? Math.min(WINDOW_HEAD, H - 6)
+        ? Math.max(winSill(o) + 8, winHead(o, H))
         : o.type === 'garage'
           ? Math.min(o.height ?? 84, H - 3)
           : Math.min(DOOR_HEAD, H - 4)
-    wallBox(group, alongWall(w, s0), alongWall(w, s1), head, top, th, MAT.wall, 0, 0, tag)
+    wallBox(group, alongWall(w, s0), alongWall(w, s1), head, top, th, MAT.wall, 0, 0, tag, facesAt(s0))
     if (o.type === 'window') {
-      wallBox(group, alongWall(w, s0), alongWall(w, s1), 0, WINDOW_SILL, th, MAT.wall, 0, 0, tag)
+      wallBox(group, alongWall(w, s0), alongWall(w, s1), 0, winSill(o), th, MAT.wall, 0, 0, tag, facesAt(s0))
       buildWindow(group, w, o, s0, s1)
     } else if (o.type === 'garage') {
       buildGarageDoor(group, w, o, s0, s1, head)
@@ -487,9 +664,51 @@ function buildWall(
     cursor = s1
   }
   if (cursor < L) {
-    wallBox(group, alongWall(w, cursor), w.b, 0, top, th, MAT.wall, cursor === 0 ? ext : 0, ext, tag)
+    wallBox(group, alongWall(w, cursor), w.b, 0, top, th, MAT.wall, cursor === 0 ? ext : 0, ext, tag, facesAt(cursor))
   }
   if (!extended) wallBox(group, w.a, w.b, H, H + 1, th + 0.4, MAT.wallCap, ext, ext)
+
+  // wainscot: lower accent band on exterior faces, broken around low openings
+  const wain = faceCtx?.siding?.wainscot
+  if (wain && (fr.plusOut || fr.minusOut) && !w.bulge) {
+    const wh = Math.min(wain.height, H - 6)
+    const wmat = sidingMaterial(faceCtx!.siding!.type, wain.color)
+    const ang = Math.atan2(w.b.y - w.a.y, w.b.x - w.a.x)
+    const nx = -Math.sin(ang)
+    const ny = Math.cos(ang)
+    const lows = ops.filter(
+      ({ o }) => o.type !== 'window' || winSill(o) < wh - 1
+    )
+    const ranges: [number, number][] = []
+    let c2 = 0
+    for (const { s0, s1 } of lows) {
+      if (s0 > c2 + 1) ranges.push([c2, s0])
+      c2 = Math.max(c2, s1)
+    }
+    if (c2 < L - 1) ranges.push([c2, L])
+    for (const sign of [1, -1] as const) {
+      if (!(sign === 1 ? fr.plusOut : fr.minusOut)) continue
+      const off = th / 2 + 0.7
+      for (const [r0, r1] of ranges) {
+        const aP = alongWall(w, r0)
+        const bP = alongWall(w, r1)
+        const shift = (p: Pt): Pt => ({ x: p.x + nx * sign * off, y: p.y + ny * sign * off })
+        wallBox(
+          group,
+          shift(aP),
+          shift(bP),
+          0,
+          wh,
+          1.2,
+          wmat,
+          r0 === 0 ? ext : 0,
+          r1 >= L - 0.5 ? ext : 0,
+          undefined,
+          { plus: wmat, minus: wmat, u0: r0 }
+        )
+      }
+    }
+  }
 }
 
 // ---------- floor surfaces via flood fill ----------
@@ -705,7 +924,8 @@ function buildPitchedRoof(
   group: THREE.Group,
   bounds: { x0: number; z0: number; x1: number; z1: number },
   baseY: number,
-  roof: RoofSpec
+  roof: RoofSpec,
+  gableMat?: THREE.Material
 ) {
   const OV = 10 // eave overhang
   const x0 = bounds.x0 - OV
@@ -818,8 +1038,16 @@ function buildPitchedRoof(
     const wg = new THREE.BufferGeometry()
     wg.setAttribute('position', new THREE.Float32BufferAttribute(wpos, 3))
     wg.setIndex(widc)
+    // world-scaled UVs so siding patterns continue up the gable
+    const wuv: number[] = []
+    for (let i = 0; i < wpos.length; i += 3) {
+      wuv.push((alongX ? wpos[i + 2] : wpos[i]) / 96, wpos[i + 1] / 96)
+    }
+    wg.setAttribute('uv', new THREE.Float32BufferAttribute(wuv, 2))
     wg.computeVertexNormals()
-    const gm = new THREE.MeshStandardMaterial({ color: '#fafafa', roughness: 0.92, side: THREE.DoubleSide })
+    const gm =
+      gableMat ??
+      new THREE.MeshStandardMaterial({ color: '#fafafa', roughness: 0.92, side: THREE.DoubleSide })
     group.add(mesh(wg, gm, true, true))
   }
 }
@@ -834,6 +1062,10 @@ function buildBuilding(
   const bg = new THREE.Group()
   bg.position.set(b.x, 0, b.y)
   bg.rotation.y = -THREE.MathUtils.degToRad(b.rot)
+
+  // trim color drives the frame material for this building's openings
+  const prevFrame = FRAME
+  if (b.siding?.trim) FRAME = tintedMaterial(b.siding.trim, 0.8)
 
   let elevation = 0
   // the wall set whose footprint the story below sealed with — floors above
@@ -887,7 +1119,21 @@ function buildBuilding(
     const extend = isTop
       ? undefined
       : { to: Math.max(floor.height + STORY_GAP, 0), ifAtLeast: fullH }
-    for (const w of geomWalls) buildWall(fg, w, floor.openings, extend, { wallId: w.id, floor: k })
+    // per-room interior paint: map material-region -> wall color from the room tags
+    const roomColors = new Map<number, string>()
+    const regRaster = matRaster ?? union
+    if (regRaster) {
+      for (const t of floor.rooms ?? []) {
+        if (!t.wallColor) continue
+        const r = regionAt(regRaster, t.x, t.y)
+        if (r >= 0) roomColors.set(r, t.wallColor)
+      }
+    }
+    const faceCtx: WallFaceCtx | undefined = union
+      ? { raster: union, matRaster, roomColors, siding: b.siding }
+      : undefined
+    for (const w of geomWalls)
+      buildWall(fg, w, floor.openings, extend, { wallId: w.id, floor: k }, faceCtx)
 
     // pitched roof over the top story: prefer the story's own sealed outline
     // (e.g. the apartment) — the deck around it stays a flat roof
@@ -905,7 +1151,14 @@ function buildBuilding(
           z1 = Math.max(z1, p.y)
         }
       }
-      if (x1 > x0 && z1 > z0) buildPitchedRoof(fg, { x0, z0, x1, z1 }, wallTop, b.roof)
+      if (x1 > x0 && z1 > z0)
+        buildPitchedRoof(
+          fg,
+          { x0, z0, x1, z1 },
+          wallTop,
+          b.roof,
+          b.siding ? sidingMaterial(b.siding.type, b.siding.color, true) : undefined
+        )
     }
 
     for (const f of floor.furniture) {
@@ -926,6 +1179,7 @@ function buildBuilding(
     floorGroups.push({ floor: k, group: fg, baseY: elevation })
     elevation += floor.height + STORY_GAP
   })
+  FRAME = prevFrame
   return bg
 }
 

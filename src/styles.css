@@ -1233,3 +1233,25 @@ body {
     box-shadow: none;
   }
 }
+
+/* ---------- color swatches ---------- */
+.swatch-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+  padding: 0;
+}
+
+.swatch.active {
+  outline: 2px solid var(--accent);
+  outline-offset: 1.5px;
+}

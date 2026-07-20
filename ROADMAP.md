@@ -5,9 +5,11 @@
 > heightfield, Overture building shells, boundary polygon + georeferencing) and
 > **Phase 1** (auto-detected rooms w/ names + live areas + floor totals, invisible room
 > dividers, auto exterior dimension strings w/ click-to-stretch resize, print/PDF sheet,
-> PNG export; shared rasterizer extracted to `src/model/raster.ts`). Phase 1 leftovers
-> rolled forward: interior auto-dims, blueprint display style (Phase 8's display styles).
-> Next: Phase 2 (window types + sills, pocket/barn doors, siding/wainscot, room paint).
+> PNG export; shared rasterizer extracted to `src/model/raster.ts`), and
+> **Phase 2** (window styles w/ sill+head heights, pocket + barn doors, exterior siding
+> w/ wainscot band + trim color incl. gable ends, per-room interior wall paint).
+> Leftovers rolled forward: interior auto-dims, blueprint display style, corner boards.
+> Next: Phase 3 (roof v2 — footprint-true roofs with valleys via distance transform).
 >
 > Basis: three competitive research sweeps (July 2026) covering
 > **consumer floorplanners** (RoomSketcher, Floorplanner, Planner 5D, HomeByMe, Coohom),

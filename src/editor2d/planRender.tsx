@@ -145,14 +145,27 @@ export function OpeningGlyph({
 
   let inner: React.ReactNode = null
   switch (o.type) {
-    case 'window':
+    case 'window': {
+      const style = o.style ?? 'slider'
       inner = (
         <>
           <rect x={-hw} y={-th / 2} width={o.width} height={th} fill="var(--glyph-fill)" style={jamb} />
           <line x1={-hw} y1={0} x2={hw} y2={0} style={jamb} />
+          {style === 'slider' && <line x1={0} y1={-th / 2} x2={0} y2={th / 2} style={jamb} />}
+          {style === 'fixed' && <line x1={0} y1={-th / 2} x2={0} y2={th / 2} style={jamb} />}
+          {style === 'single-hung' && (
+            <line x1={-hw / 2} y1={0} x2={hw / 2} y2={0} style={{ ...jamb, strokeWidth: 2.4 }} />
+          )}
+          {style === 'casement' && (
+            <g transform={`scale(1 ${sy})`}>
+              <line x1={-hw} y1={-th / 2} x2={-hw / 6} y2={-th / 2 - hw * 0.55} style={leafStyle} />
+              <line x1={hw} y1={-th / 2} x2={hw / 6} y2={-th / 2 - hw * 0.55} style={leafStyle} />
+            </g>
+          )}
         </>
       )
       break
+    }
     case 'door': {
       // hinge at -hw (or +hw flipped); leaf opens to -y (or +y flipped)
       inner = (
@@ -196,6 +209,42 @@ export function OpeningGlyph({
         <g transform={`scale(${sx} ${sy})`}>
           <path d={`M ${-hw} ${y0} L ${-hw + q} ${y0 - q * 1.6} L ${-hw + 2 * q} ${y0}`} style={leafStyle} />
           <path d={`M ${hw} ${y0} L ${hw - q} ${y0 - q * 1.6} L ${hw - 2 * q} ${y0}`} style={leafStyle} />
+        </g>
+      )
+      break
+    }
+    case 'pocket': {
+      // slab sliding into a dashed wall cavity on the hinge side
+      const slab = o.width * 0.55
+      inner = (
+        <g transform={`scale(${sx} 1)`}>
+          <rect
+            x={-hw - slab}
+            y={-th / 2 + 1}
+            width={slab}
+            height={th - 2}
+            fill="none"
+            style={{ ...arcStyle, strokeDasharray: '4 3' }}
+          />
+          <rect x={-hw} y={-1.4} width={slab * 0.65} height={2.8} fill="var(--glyph-fill)" style={jamb} />
+        </g>
+      )
+      break
+    }
+    case 'barn': {
+      // slab parked along the outside face + track line
+      const slab = o.width * 1.05
+      inner = (
+        <g transform={`scale(${sx} ${sy})`}>
+          <line x1={-hw - o.width * 0.3} y1={-th / 2 - 4.5} x2={hw + o.width * 0.3} y2={-th / 2 - 4.5} style={arcStyle} />
+          <rect
+            x={-hw - o.width * 0.35}
+            y={-th / 2 - 3.6}
+            width={slab}
+            height={2.6}
+            fill="var(--glyph-fill)"
+            style={jamb}
+          />
         </g>
       )
       break

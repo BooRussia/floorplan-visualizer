@@ -7,6 +7,8 @@ const DOOR_TYPES: { key: OpeningType; label: string }[] = [
   { key: 'double-door', label: 'Double door' },
   { key: 'sliding', label: 'Sliding glass' },
   { key: 'bifold', label: 'Bifold' },
+  { key: 'pocket', label: 'Pocket door' },
+  { key: 'barn', label: 'Barn door' },
   { key: 'opening', label: 'Cased opening' },
   { key: 'garage', label: 'Garage door' },
 ]

@@ -76,7 +76,10 @@ interface StoreState {
     buildings?: Building[]
   }) => void
   addBuilding: (opts?: { w?: number; d?: number; x?: number; y?: number; name?: string }) => void
-  updateBuilding: (id: string, patch: Partial<Pick<Building, 'name' | 'x' | 'y' | 'rot' | 'roof'>>) => void
+  updateBuilding: (
+    id: string,
+    patch: Partial<Pick<Building, 'name' | 'x' | 'y' | 'rot' | 'roof' | 'siding'>>
+  ) => void
   deleteBuilding: (id: string) => void
 
   setActiveFloor: (i: number) => void

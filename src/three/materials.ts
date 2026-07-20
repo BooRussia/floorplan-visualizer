@@ -335,3 +335,132 @@ export function surfaceMaterial(kind: string): THREE.MeshStandardMaterial {
       return new THREE.MeshStandardMaterial({ map: getConcreteTexture(), roughness: 0.9 })
   }
 }
+
+// ---------- exterior siding ----------
+
+import type { SidingType } from '../model/types'
+
+/** Near-white pattern canvases; material.color supplies the actual siding color. */
+function makeSidingPattern(type: Exclude<SidingType, 'paint'>): THREE.Texture {
+  const S = 256 // texture spans 96" of wall
+  const canvas = document.createElement('canvas')
+  canvas.width = S
+  canvas.height = S
+  const ctx = canvas.getContext('2d')!
+  ctx.fillStyle = '#f0f0ee'
+  ctx.fillRect(0, 0, S, S)
+
+  if (type === 'lap') {
+    const course = (S * 8) / 96 // 8" laps
+    for (let y = 0; y < S + 1; y += course) {
+      const g = ctx.createLinearGradient(0, y, 0, y + course)
+      g.addColorStop(0, 'rgba(255,255,255,0.30)')
+      g.addColorStop(0.75, 'rgba(0,0,0,0.05)')
+      g.addColorStop(1, 'rgba(0,0,0,0.32)')
+      ctx.fillStyle = g
+      ctx.fillRect(0, y, S, course)
+    }
+  } else if (type === 'board-batten') {
+    const spacing = (S * 16) / 96 // battens every 16"
+    for (let x = 0; x < S + 1; x += spacing) {
+      ctx.fillStyle = 'rgba(0,0,0,0.16)'
+      ctx.fillRect(x - 4, 0, 3, S)
+      ctx.fillStyle = 'rgba(255,255,255,0.42)'
+      ctx.fillRect(x - 1, 0, 5, S)
+      ctx.fillStyle = 'rgba(0,0,0,0.22)'
+      ctx.fillRect(x + 4, 0, 2, S)
+    }
+  } else if (type === 'metal') {
+    const rib = (S * 12) / 96 // ribs every 12"
+    for (let x = 0; x < S + 1; x += rib) {
+      ctx.fillStyle = 'rgba(255,255,255,0.4)'
+      ctx.fillRect(x - 1.5, 0, 1.5, S)
+      ctx.fillStyle = 'rgba(0,0,0,0.32)'
+      ctx.fillRect(x, 0, 2, S)
+    }
+  } else if (type === 'brick') {
+    const bh = (S * 2.7) / 96
+    const bw = (S * 8) / 96
+    ctx.fillStyle = '#d9d5d0'
+    ctx.fillRect(0, 0, S, S)
+    let row = 0
+    for (let y = 0; y < S; y += bh, row++) {
+      const off = row % 2 ? bw / 2 : 0
+      for (let x = -bw; x < S + bw; x += bw) {
+        const shade = 232 + Math.floor(Math.random() * 18)
+        ctx.fillStyle = `rgb(${shade},${shade - 4},${shade - 8})`
+        ctx.fillRect(x + off + 0.7, y + 0.7, bw - 1.4, bh - 1.4)
+      }
+    }
+  } else {
+    // stone: irregular grayscale blocks
+    ctx.fillStyle = '#d2d0cc'
+    ctx.fillRect(0, 0, S, S)
+    for (let i = 0; i < 90; i++) {
+      const x = Math.random() * S
+      const y = Math.random() * S
+      const w = 14 + Math.random() * 26
+      const h = 10 + Math.random() * 16
+      const shade = 224 + Math.floor(Math.random() * 26)
+      ctx.fillStyle = `rgb(${shade},${shade},${shade - 4})`
+      ctx.beginPath()
+      ctx.roundRect(x, y, w, h, 5)
+      ctx.fill()
+      ctx.strokeStyle = 'rgba(60,60,60,0.35)'
+      ctx.lineWidth = 1.2
+      ctx.stroke()
+    }
+  }
+
+  const t = new THREE.CanvasTexture(canvas)
+  t.wrapS = THREE.RepeatWrapping
+  t.wrapT = THREE.RepeatWrapping
+  t.colorSpace = THREE.SRGBColorSpace
+  t.anisotropy = 8
+  return t
+}
+
+const sidingPatternCache = new Map<string, THREE.Texture>()
+const sidingMatCache = new Map<string, THREE.MeshStandardMaterial>()
+
+/** Siding material for exterior wall faces; UVs are expected in 96"-repeat world units. */
+export function sidingMaterial(
+  type: SidingType,
+  color: string,
+  doubleSided = false
+): THREE.MeshStandardMaterial {
+  const key = `${type}|${color}|${doubleSided ? 2 : 1}`
+  let m = sidingMatCache.get(key)
+  if (!m) {
+    const map =
+      type === 'paint'
+        ? null
+        : sidingPatternCache.get(type) ??
+          (() => {
+            const t = makeSidingPattern(type)
+            sidingPatternCache.set(type, t)
+            return t
+          })()
+    m = new THREE.MeshStandardMaterial({
+      ...(map ? { map } : {}),
+      color,
+      roughness: type === 'metal' ? 0.45 : 0.9,
+      metalness: type === 'metal' ? 0.4 : 0.02,
+      ...(doubleSided ? { side: THREE.DoubleSide } : {}),
+    })
+    sidingMatCache.set(key, m)
+  }
+  return m
+}
+
+const tintCache = new Map<string, THREE.MeshStandardMaterial>()
+
+/** Flat-color material (interior room paint, trim) sharing wall-like shading. */
+export function tintedMaterial(color: string, roughness = 0.9): THREE.MeshStandardMaterial {
+  let m = tintCache.get(color)
+  if (!m) {
+    m = new THREE.MeshStandardMaterial({ color, roughness, metalness: 0.02 })
+    tintCache.set(color, m)
+  }
+  return m
+}
