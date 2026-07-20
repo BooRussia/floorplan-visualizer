@@ -186,6 +186,14 @@ export default function Toolbar() {
             </button>
             <button
               onClick={() => {
+                useStore.getState().setSiteImportOpen(true)
+                setFileMenu(null)
+              }}
+            >
+              Import site from map…
+            </button>
+            <button
+              onClick={() => {
                 useStore.getState().loadProject(JSON.parse(JSON.stringify(SAMPLE_PROJECT)))
                 setFileMenu(null)
               }}

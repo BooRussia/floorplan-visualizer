@@ -291,3 +291,53 @@ export function planBounds(pts: Pt[]): { min: Pt; max: Pt } | null {
   }
   return { min, max }
 }
+
+// ---------- polygons ----------
+
+/** Signed area via the shoelace formula (positive = counter-clockwise in screen coords). */
+export function polygonArea(ring: Pt[]): number {
+  let a = 0
+  for (let i = 0; i < ring.length; i++) {
+    const p = ring[i]
+    const q = ring[(i + 1) % ring.length]
+    a += p.x * q.y - q.x * p.y
+  }
+  return a / 2
+}
+
+export function pointInPolygon(p: Pt, ring: Pt[]): boolean {
+  let inside = false
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = ring[i]
+    const b = ring[j]
+    if (a.y > p.y !== b.y > p.y && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) {
+      inside = !inside
+    }
+  }
+  return inside
+}
+
+/** Drop collinear/near-duplicate vertices (tolerance in inches). */
+export function simplifyRing(ring: Pt[], tol = 3): Pt[] {
+  const out: Pt[] = []
+  for (const p of ring) {
+    const prev = out[out.length - 1]
+    if (prev && Math.hypot(p.x - prev.x, p.y - prev.y) < tol) continue
+    out.push({ x: p.x, y: p.y })
+  }
+  // remove closing duplicate
+  while (out.length > 1 && Math.hypot(out[0].x - out[out.length - 1].x, out[0].y - out[out.length - 1].y) < tol) {
+    out.pop()
+  }
+  // collinear pass
+  const keep: Pt[] = []
+  for (let i = 0; i < out.length; i++) {
+    const a = out[(i + out.length - 1) % out.length]
+    const b = out[i]
+    const c = out[(i + 1) % out.length]
+    const cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+    const len = Math.hypot(c.x - a.x, c.y - a.y) || 1
+    if (Math.abs(cross) / len > tol / 2) keep.push(b)
+  }
+  return keep.length >= 3 ? keep : out
+}

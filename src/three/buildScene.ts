@@ -15,6 +15,16 @@ import {
 import { dist, sampleRoad, toLocal, wallPointAt, wallSamples } from '../model/geometry'
 import { getGrassTexture, MAT, roofSurfaceMaterial, roomFloorMaterial, surfaceMaterial } from './materials'
 import { buildFurniture } from './furniture3d'
+import {
+  buildBoundaryLines,
+  buildTerrainMesh,
+  padSampler,
+  rawSampler,
+  type BuildingPad,
+  type GroundSampler,
+} from './terrain3d'
+
+const FLAT_GROUND: GroundSampler = () => 0
 
 const FLOOR_Y = 0.12
 const SLAB_DEPTH = 4
@@ -253,13 +263,13 @@ function fenceMat(type: string) {
   return type === 'chain' ? MAT.chainMetal : type === 'picket' ? MAT.fenceWhite : MAT.fenceWood
 }
 
-/** Infill between two points for one fence style. */
-function fenceSegment(group: THREE.Group, a: Pt, b: Pt, type: string, H: number) {
+/** Infill between two points for one fence style. baseY lets fences follow terrain. */
+function fenceSegment(group: THREE.Group, a: Pt, b: Pt, type: string, H: number, baseY = 0) {
   const segL = dist(a, b)
   if (segL < 2) return
   const ang = Math.atan2(b.y - a.y, b.x - a.x)
   const place = (m: THREE.Mesh, y: number) => {
-    m.position.set((a.x + b.x) / 2, y, (a.y + b.y) / 2)
+    m.position.set((a.x + b.x) / 2, y + baseY, (a.y + b.y) / 2)
     m.rotation.y = -ang
     group.add(m)
   }
@@ -275,7 +285,7 @@ function fenceSegment(group: THREE.Group, a: Pt, b: Pt, type: string, H: number)
       const px = a.x + (b.x - a.x) * t
       const pz = a.y + (b.y - a.y) * t
       const picket = mesh(new THREE.BoxGeometry(2.6, H - 4, 1), MAT.fenceWhite)
-      picket.position.set(px, (H - 4) / 2, pz)
+      picket.position.set(px, (H - 4) / 2 + baseY, pz)
       picket.rotation.y = -ang
       group.add(picket)
     }
@@ -292,11 +302,11 @@ function fenceSegment(group: THREE.Group, a: Pt, b: Pt, type: string, H: number)
 }
 
 /** One swinging gate leaf: frame + diagonal brace + style-matched infill. */
-function gateLeaf(group: THREE.Group, hinge: Pt, ang: number, openDeg: number, lw: number, H: number, type: string) {
+function gateLeaf(group: THREE.Group, hinge: Pt, ang: number, openDeg: number, lw: number, H: number, type: string, baseY = 0) {
   const gh = Math.max(24, H - 4)
   const m = fenceMat(type)
   const pivot = new THREE.Group()
-  pivot.position.set(hinge.x, 0, hinge.y)
+  pivot.position.set(hinge.x, baseY, hinge.y)
   pivot.rotation.y = -ang + THREE.MathUtils.degToRad(openDeg)
   const bar = (w: number, h: number, d: number, x: number, y: number, z = 0) => {
     const bm = mesh(new THREE.BoxGeometry(w, h, d), m)
@@ -337,15 +347,16 @@ function gateLeaf(group: THREE.Group, hinge: Pt, ang: number, openDeg: number, l
   group.add(pivot)
 }
 
-function buildFence(group: THREE.Group, w: Wall, openings: Opening[]) {
+function buildFence(group: THREE.Group, w: Wall, openings: Opening[], gy: GroundSampler = FLAT_GROUND) {
   const type = w.fence!
   const H = w.height
   const postMat = fenceMat(type)
   const post = (p: Pt, big = false) => {
     const pm = mesh(new THREE.BoxGeometry(big ? 4.5 : 3.5, H + (big ? 2 : 0), big ? 4.5 : 3.5), postMat)
-    pm.position.set(p.x, (H + (big ? 2 : 0)) / 2, p.y)
+    pm.position.set(p.x, (H + (big ? 2 : 0)) / 2 + gy(p.x, p.y), p.y)
     group.add(pm)
   }
+  const segY = (a: Pt, b: Pt) => (gy(a.x, a.y) + gy(b.x, b.y)) / 2
 
   const L = dist(w.a, w.b)
   const gates = openings
@@ -363,7 +374,7 @@ function buildFence(group: THREE.Group, w: Wall, openings: Opening[]) {
     for (let i = 0; i < posts; i++) post(wallPointAt(w, i / (posts - 1)))
     const samples = wallSamples(w, 96)
     for (let i = 0; i < samples.length - 1; i++) {
-      fenceSegment(group, samples[i], samples[i + 1], type, H)
+      fenceSegment(group, samples[i], samples[i + 1], type, H, segY(samples[i], samples[i + 1]))
     }
     return
   }
@@ -391,7 +402,7 @@ function buildFence(group: THREE.Group, w: Wall, openings: Opening[]) {
     for (let i = 1; i < posts; i++) {
       const p = at(r0 + (runL * i) / (posts - 1))
       post(p)
-      fenceSegment(group, prev, p, type, H)
+      fenceSegment(group, prev, p, type, H, segY(prev, p))
       prev = p
     }
   }
@@ -401,13 +412,17 @@ function buildFence(group: THREE.Group, w: Wall, openings: Opening[]) {
     post(at(s1), true)
     const width = s1 - s0
     const side = o.flipSwing ? 1 : -1
+    const gyAt = (s: number) => {
+      const p = at(s)
+      return gy(p.x, p.y)
+    }
     if (width > 72) {
-      gateLeaf(group, at(s0), ang, side * 45, width / 2 - 1, H, type)
-      gateLeaf(group, at(s1), ang, 180 - side * 45, width / 2 - 1, H, type)
+      gateLeaf(group, at(s0), ang, side * 45, width / 2 - 1, H, type, gyAt(s0))
+      gateLeaf(group, at(s1), ang, 180 - side * 45, width / 2 - 1, H, type, gyAt(s1))
     } else if (o.flipHinge) {
-      gateLeaf(group, at(s1), ang, 180 - side * 50, width - 1, H, type)
+      gateLeaf(group, at(s1), ang, 180 - side * 50, width - 1, H, type, gyAt(s1))
     } else {
-      gateLeaf(group, at(s0), ang, side * 50, width - 1, H, type)
+      gateLeaf(group, at(s0), ang, side * 50, width - 1, H, type, gyAt(s0))
     }
   }
 }
@@ -767,7 +782,7 @@ function buildFloorSurface(
 // ---------- roads ----------
 
 /** Flat ribbon mesh along the road's bezier centerline, width/2 to each side. */
-function buildRoad(group: THREE.Group, road: Road) {
+function buildRoad(group: THREE.Group, road: Road, gy: GroundSampler = FLAT_GROUND) {
   const pts = sampleRoad(road.nodes, 10)
   if (pts.length < 2) return
   const hw = road.width / 2
@@ -786,8 +801,12 @@ function buildRoad(group: THREE.Group, road: Road) {
     const tl = Math.hypot(tx, ty) || 1
     const nx = -ty / tl
     const ny = tx / tl
-    positions.push(pts[i].x + nx * hw, Y, pts[i].y + ny * hw)
-    positions.push(pts[i].x - nx * hw, Y, pts[i].y - ny * hw)
+    const lx = pts[i].x + nx * hw
+    const lz = pts[i].y + ny * hw
+    const rx = pts[i].x - nx * hw
+    const rz = pts[i].y - ny * hw
+    positions.push(lx, Y + gy(lx, lz), lz)
+    positions.push(rx, Y + gy(rx, rz), rz)
     const s = 1 / 96
     uvs.push(0, arc * s, road.width * s, arc * s)
     if (i > 0) {
@@ -812,7 +831,9 @@ function buildRoad(group: THREE.Group, road: Road) {
       const b = pts[Math.min(pts.length - 1, i + 3)]
       const ang = Math.atan2(b.y - a.y, b.x - a.x)
       const dash = mesh(new THREE.BoxGeometry(dist(a, b), 0.3, 4), MAT.white, false)
-      dash.position.set((a.x + b.x) / 2, Y + 0.2, (a.y + b.y) / 2)
+      const mx = (a.x + b.x) / 2
+      const mz = (a.y + b.y) / 2
+      dash.position.set(mx, Y + 0.2 + gy(mx, mz), mz)
       dash.rotation.y = -ang
       group.add(dash)
     }
@@ -1086,26 +1107,66 @@ export function buildProject(
   }
 
   // ---- plot: whole property, buildings enclosed ----
-  const grassMat = new THREE.MeshStandardMaterial({ map: getGrassTexture(), roughness: 1 })
-  if (grassMat.map) {
-    const map = grassMat.map.clone()
-    map.repeat.set(project.plotW / 120, project.plotD / 120)
-    map.needsUpdate = true
-    grassMat.map = map
+  // grade: imported terrain heightfield with flat pads under each building
+  const rawGy = rawSampler(project.terrain, project.plotW, project.plotD)
+  const pads: BuildingPad[] = project.buildings.map((b) => {
+    const r = (b.rot * Math.PI) / 180
+    const cos = Math.cos(r)
+    const sin = Math.sin(r)
+    let x0 = Infinity
+    let z0 = Infinity
+    let x1 = -Infinity
+    let z1 = -Infinity
+    for (const w of b.floors[0]?.walls ?? []) {
+      for (const p of [w.a, w.b]) {
+        const px = b.x + p.x * cos - p.y * sin
+        const pz = b.y + p.x * sin + p.y * cos
+        x0 = Math.min(x0, px)
+        z0 = Math.min(z0, pz)
+        x1 = Math.max(x1, px)
+        z1 = Math.max(z1, pz)
+      }
+    }
+    if (!Number.isFinite(x0)) {
+      x0 = b.x - 120
+      z0 = b.y - 120
+      x1 = b.x + 120
+      z1 = b.y + 120
+    }
+    const pad = { x0: x0 - 12, z0: z0 - 12, x1: x1 + 12, z1: z1 + 12, y: 0 }
+    pad.y = rawGy((x0 + x1) / 2, (z0 + z1) / 2)
+    return pad
+  })
+  const gy = project.terrain ? padSampler(rawGy, pads) : FLAT_GROUND
+
+  if (project.terrain) {
+    group.add(buildTerrainMesh(gy, project.plotW, project.plotD, project.terrain.w * 2))
+  } else {
+    const grassMat = new THREE.MeshStandardMaterial({ map: getGrassTexture(), roughness: 1 })
+    if (grassMat.map) {
+      const map = grassMat.map.clone()
+      map.repeat.set(project.plotW / 120, project.plotD / 120)
+      map.needsUpdate = true
+      grassMat.map = map
+    }
+    const grass = mesh(new THREE.BoxGeometry(project.plotW, 6, project.plotD), grassMat, false, true)
+    grass.position.set(project.plotW / 2, -3, project.plotD / 2)
+    group.add(grass)
   }
-  const grass = mesh(new THREE.BoxGeometry(project.plotW, 6, project.plotD), grassMat, false, true)
-  grass.position.set(project.plotW / 2, -3, project.plotD / 2)
-  group.add(grass)
+
+  if (project.plotBoundary?.length) {
+    group.add(buildBoundaryLines(project.plotBoundary, gy))
+  }
 
   // site layer: roads under everything, then fences + landscape/surfaces
-  for (const r of project.site.roads) buildRoad(group, r)
+  for (const r of project.site.roads) buildRoad(group, r, gy)
   for (const w of project.site.walls) {
-    if (w.fence) buildFence(group, w, project.site.openings)
+    if (w.fence) buildFence(group, w, project.site.openings, gy)
     else buildWall(group, w, project.site.openings)
   }
   for (const f of project.site.furniture) {
     const g = buildFurniture(f.kind, f.w, f.d, f.h)
-    g.position.set(f.x, 0.06, f.y)
+    g.position.set(f.x, 0.06 + gy(f.x, f.y), f.y)
     g.rotation.y = -THREE.MathUtils.degToRad(f.rot)
     g.userData.furnId = f.id
     furniture.set(f.id, { group: g, place: { scope: 'site' }, elevation: 0 })
@@ -1113,7 +1174,9 @@ export function buildProject(
   }
 
   project.buildings.forEach((b, i) => {
-    group.add(buildBuilding(b, i, furniture, floorGroups, true))
+    const bg = buildBuilding(b, i, furniture, floorGroups, true)
+    bg.position.y = pads[i].y
+    group.add(bg)
   })
 
   const center = new THREE.Vector3(project.plotW / 2, 0, project.plotD / 2)

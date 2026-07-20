@@ -948,3 +948,125 @@ body {
   background: var(--accent);
   color: #fff;
 }
+
+/* ---------- site import (map wizard) ---------- */
+.site-import-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.site-import {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-2);
+  width: min(1100px, 96vw);
+  height: min(780px, 94vh);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.site-import-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.site-import-head > b {
+  font-size: 13.5px;
+}
+
+.site-import-search {
+  display: flex;
+  gap: var(--space-1);
+  flex: 1;
+  min-width: 220px;
+}
+
+.site-import-search input {
+  flex: 1;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 5px 9px;
+  font-size: 12.5px;
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.site-import-modes {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.site-import-modes .mini-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.site-import-map {
+  flex: 1;
+  min-height: 0;
+}
+
+.site-import-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.site-import-status {
+  flex: 1;
+  min-width: 220px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.site-import-status b {
+  color: var(--text);
+}
+
+.site-import-opt {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  user-select: none;
+}
+
+.site-import-advanced {
+  border-top: 1px solid var(--border);
+  padding: var(--space-2) var(--space-3);
+  font-size: 12.5px;
+}
+
+.site-import-advanced summary {
+  cursor: pointer;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.site-import-advanced .prop-row input {
+  width: 100%;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 5px 9px;
+  font-size: 12px;
+  background: var(--surface-2);
+  color: var(--text);
+  margin-top: 6px;
+}

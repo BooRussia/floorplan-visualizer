@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { stairSpecs, useActiveFloor, useStore } from '../model/store'
 import { catalogItem } from '../model/catalog'
-import { dist, fmtLenShort, norm, parseLen, roadLength, scale, sub, add } from '../model/geometry'
+import { dist, fmtLenShort, norm, parseLen, polygonArea, roadLength, scale, sub, add } from '../model/geometry'
 import {
   MAX_BUILDINGS,
   MAX_FLOORS,
@@ -100,7 +100,9 @@ export default function PropertiesPanel() {
   const [newB, setNewB] = useState<{ w: string; d: string } | null>(null)
 
   if (!selection && isPlot) {
-    const acres = (project.plotW * project.plotD) / SQIN_PER_ACRE
+    const boundarySqin = project.plotBoundary?.reduce((a, r) => a + Math.abs(polygonArea(r)), 0)
+    const plotSqin = boundarySqin || project.plotW * project.plotD
+    const acres = plotSqin / SQIN_PER_ACRE
     return (
       <aside className="props">
         <div className="props-header">Plot</div>
@@ -116,9 +118,12 @@ export default function PropertiesPanel() {
             onCommit={(v) => st.setPlotSize(project.plotW, v)}
           />
           <div className="props-stat">
-            <span>Area</span>
-            <b>{acres >= 0.2 ? `${acres.toFixed(2)} acres` : `${Math.round((project.plotW * project.plotD) / 144)} sq ft`}</b>
+            <span>{boundarySqin ? 'Property area' : 'Area'}</span>
+            <b>{acres >= 0.2 ? `${acres.toFixed(2)} acres` : `${Math.round(plotSqin / 144)} sq ft`}</b>
           </div>
+          <button className="mini-btn" onClick={() => st.setSiteImportOpen(true)}>
+            🌍 Import site from map…
+          </button>
           <div className="props-stat">
             <span>Buildings</span>
             <b>{project.buildings.length}</b>

@@ -120,6 +120,7 @@ export default function Editor2D() {
   const mode = useStore((s) => s.mode)
   const plotW = useStore((s) => s.project.plotW)
   const plotD = useStore((s) => s.project.plotD)
+  const plotBoundary = useStore((s) => s.project.plotBoundary)
   const buildings = useStore((s) => s.project.buildings)
   const activeFloor = useStore((s) => s.activeFloor)
   const below = useStore((s) =>
@@ -1094,22 +1095,43 @@ export default function Editor2D() {
         <rect x={minX} y={minY} width={pw / view.ppi} height={ph / view.ppi} fill="url(#gridBig)" />
 
         {/* plot boundary (property line) */}
-        {isPlot && (
-          <>
-            <rect x={0} y={0} width={plotW} height={plotD} fill="var(--plot-fill)" />
-            <rect
-              x={0}
-              y={0}
-              width={plotW}
-              height={plotD}
-              fill="none"
-              stroke={PLOT_LINE}
-              strokeWidth={2}
-              strokeDasharray="14 7 3 7"
-              vectorEffect="non-scaling-stroke"
-            />
-          </>
-        )}
+        {isPlot &&
+          (plotBoundary?.length ? (
+            <>
+              <rect x={0} y={0} width={plotW} height={plotD} fill="var(--plot-fill)" opacity={0.4} />
+              {plotBoundary.map((ring, i) => {
+                const d = `M ${ring.map((p) => `${p.x} ${p.y}`).join(' L ')} Z`
+                return (
+                  <g key={i}>
+                    <path d={d} fill="var(--plot-fill)" />
+                    <path
+                      d={d}
+                      fill="none"
+                      stroke={PLOT_LINE}
+                      strokeWidth={2}
+                      strokeDasharray="14 7 3 7"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  </g>
+                )
+              })}
+            </>
+          ) : (
+            <>
+              <rect x={0} y={0} width={plotW} height={plotD} fill="var(--plot-fill)" />
+              <rect
+                x={0}
+                y={0}
+                width={plotW}
+                height={plotD}
+                fill="none"
+                stroke={PLOT_LINE}
+                strokeWidth={2}
+                strokeDasharray="14 7 3 7"
+                vectorEffect="non-scaling-stroke"
+              />
+            </>
+          ))}
 
         {/* underlay: the floor below, for alignment */}
         {below && (

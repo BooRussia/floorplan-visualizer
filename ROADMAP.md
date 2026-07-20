@@ -1,6 +1,9 @@
 # Floorplan Visualizer — Feature Audit & Implementation Roadmap
 
-> Status: **PROPOSAL — awaiting approval. Nothing here is implemented yet.**
+> Status: **APPROVED** (all phases, 2026-07-19). Build order: Phase 9 first, then 1→8.
+> Shipped so far: **Phase 9 v1** (site-import wizard, parcel click + trace, terrain
+> heightfield, Overture building shells, boundary polygon + georeferencing). Remaining
+> Phase 9 polish: satellite ground drape, more parcel-source coverage.
 >
 > Basis: three competitive research sweeps (July 2026) covering
 > **consumer floorplanners** (RoomSketcher, Floorplanner, Planner 5D, HomeByMe, Coohom),

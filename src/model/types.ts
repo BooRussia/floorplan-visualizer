@@ -136,10 +136,31 @@ export interface Building {
   roof: RoofSpec
 }
 
+/** Geographic anchor: plot-local (0,0) sits at this lat/lon corner, north-up (+y = south). */
+export interface GeoAnchor {
+  lat: number
+  lon: number
+}
+
+/** Terrain heightfield sampled over the plot. Elevations in inches, relative (min = 0). */
+export interface TerrainGrid {
+  /** cell size in inches */
+  cell: number
+  /** columns / rows */
+  w: number
+  h: number
+  /** row-major elevations at cell corners, (w+1)*(h+1) values */
+  elev: number[]
+}
+
 export interface Project {
   /** plot dimensions in inches */
   plotW: number
   plotD: number
+  /** true property boundary rings in plot inches (from site import or tracing); absent = plotW×plotD rectangle */
+  plotBoundary?: Pt[][]
+  geo?: GeoAnchor
+  terrain?: TerrainGrid
   /** landscaping layer: walls double as fence lines, furniture as landscape items/surfaces */
   site: Floor
   buildings: Building[]
@@ -225,9 +246,31 @@ const migrateFloor = (f: any, i: number): Floor => ({
 export function migrateProject(raw: any): Project | null {
   if (!raw || typeof raw !== 'object') return null
   if (Array.isArray(raw.buildings)) {
+    const boundary: Pt[][] | undefined = Array.isArray(raw.plotBoundary)
+      ? raw.plotBoundary.filter(
+          (ring: any) =>
+            Array.isArray(ring) &&
+            ring.length >= 3 &&
+            ring.every((p: any) => typeof p?.x === 'number' && typeof p?.y === 'number')
+        )
+      : undefined
+    const terrain: TerrainGrid | undefined =
+      raw.terrain &&
+      typeof raw.terrain.cell === 'number' &&
+      typeof raw.terrain.w === 'number' &&
+      typeof raw.terrain.h === 'number' &&
+      Array.isArray(raw.terrain.elev) &&
+      raw.terrain.elev.length === (raw.terrain.w + 1) * (raw.terrain.h + 1)
+        ? { cell: raw.terrain.cell, w: raw.terrain.w, h: raw.terrain.h, elev: raw.terrain.elev }
+        : undefined
     return {
       plotW: typeof raw.plotW === 'number' ? raw.plotW : 200 * 12,
       plotD: typeof raw.plotD === 'number' ? raw.plotD : 150 * 12,
+      ...(boundary && boundary.length ? { plotBoundary: boundary } : {}),
+      ...(typeof raw.geo?.lat === 'number' && typeof raw.geo?.lon === 'number'
+        ? { geo: { lat: raw.geo.lat, lon: raw.geo.lon } }
+        : {}),
+      ...(terrain ? { terrain } : {}),
       site: raw.site ? migrateFloor(raw.site, 0) : { ...emptyFloor(1), name: 'Site' },
       buildings: raw.buildings.slice(0, MAX_BUILDINGS).map((b: any, i: number) => ({
         id: b.id ?? uid('bldg'),

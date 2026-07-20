@@ -44,6 +44,7 @@ interface StoreState {
   selection: Selection
   tool: Tool
   view: '2d' | '3d'
+  siteImportOpen: boolean
   showDims: boolean
   /** magnet: endpoint/guide/angle snapping while drawing (S toggles; Alt overrides) */
   snapOn: boolean
@@ -53,6 +54,7 @@ interface StoreState {
 
   setTool: (t: Tool) => void
   setView: (v: '2d' | '3d') => void
+  setSiteImportOpen: (b: boolean) => void
   setShowDims: (b: boolean) => void
   setSnapOn: (b: boolean) => void
   setTheme: (t: 'light' | 'dark') => void
@@ -61,6 +63,14 @@ interface StoreState {
   enterBuilding: (index: number) => void
   exitToPlot: () => void
   setPlotSize: (w: number, d: number) => void
+  importSite: (payload: {
+    plotW: number
+    plotD: number
+    boundary: import('./types').Pt[][]
+    geo: import('./types').GeoAnchor
+    terrain?: import('./types').TerrainGrid
+    buildings?: Building[]
+  }) => void
   addBuilding: (opts?: { w?: number; d?: number; x?: number; y?: number; name?: string }) => void
   updateBuilding: (id: string, patch: Partial<Pick<Building, 'name' | 'x' | 'y' | 'rot' | 'roof'>>) => void
   deleteBuilding: (id: string) => void
@@ -147,6 +157,7 @@ export const useStore = create<StoreState>((set, get) => {
     selection: null,
     tool: { type: 'select' },
     view: '2d',
+    siteImportOpen: false,
     showDims: true,
     snapOn: true,
     theme: (localStorage.getItem('fv-theme') === 'dark' ? 'dark' : 'light') as 'light' | 'dark',
@@ -155,6 +166,7 @@ export const useStore = create<StoreState>((set, get) => {
 
     setTool: (tool) => set({ tool, selection: null }),
     setView: (view) => set({ view }),
+    setSiteImportOpen: (siteImportOpen) => set({ siteImportOpen }),
     setShowDims: (showDims) => set({ showDims }),
     setSnapOn: (snapOn) => set({ snapOn }),
     setTheme: (theme) => {
@@ -182,6 +194,27 @@ export const useStore = create<StoreState>((set, get) => {
           plotD: Math.max(240, Math.min(d, 5280 * 12)),
         },
       }))
+    },
+    importSite: ({ plotW, plotD, boundary, geo, terrain, buildings }) => {
+      get().checkpoint()
+      set((s) => {
+        const room = MAX_BUILDINGS - s.project.buildings.length
+        const incoming = (buildings ?? []).slice(0, Math.max(0, room))
+        return {
+          project: {
+            ...s.project,
+            plotW: Math.max(240, Math.min(plotW, 5280 * 12)),
+            plotD: Math.max(240, Math.min(plotD, 5280 * 12)),
+            plotBoundary: boundary.length ? boundary : undefined,
+            geo,
+            terrain,
+            buildings: [...s.project.buildings, ...incoming],
+          },
+          mode: { scope: 'plot' } as EditMode,
+          activeFloor: 0,
+          selection: null,
+        }
+      })
     },
     addBuilding: (opts) => {
       const { project, checkpoint } = get()

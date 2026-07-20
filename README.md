@@ -26,6 +26,20 @@ plot you can:
   layer them into driveways, patios and garden beds.
 - **Landscape** with shade trees, pines, shrubs, flower beds, stepping stones, boulders
   and a mailbox. Everything places in 2D and can be clicked and dragged in 3D too.
+- **Import your real property from a map** (`File ▾ → Import site from map…`, or the 🌍
+  button in the Plot panel). Search your address on satellite imagery, then **click your
+  parcel** — the true property boundary loads from public county/state GIS records
+  (built-in coverage: WA, MT, FL, NY statewide + Maricopa County AZ; paste any county's
+  public ArcGIS parcel URL or a Regrid token for other areas, or just **trace the
+  boundary** by clicking corners on the imagery). Select multiple parcels if your land is
+  split. Generate, and the app builds the plot at real-world scale with:
+  - the **true boundary polygon** as your property line (acreage computed from it),
+  - **terrain elevation** sampled from USGS-derived elevation tiles — the 3D ground
+    becomes a real heightfield, buildings sit on graded pads, and fences/roads follow
+    the slope,
+  - **existing buildings** from the Overture Maps footprint dataset, placed at their
+    real positions with their real outlines and heights — open any of them and draw
+    the interior.
 
 Inside a building, the **floor material paint tool** (`P`) drops a material marker in any
 room — wood, tile, carpet, concrete, or stone — and the whole room gets that floor in 3D
