@@ -68,7 +68,7 @@ export default function Scene3D() {
   useEffect(() => {
     const st = stateRef.current
     if (st?.rebuild) st.rebuild(true)
-  }, [closed, roof?.style, roof?.pitch, roof?.material, roof?.ridge])
+  }, [closed, roof?.style, roof?.pitch, roof?.material, roof?.ridge, roof?.shedLow])
 
   useEffect(() => {
     const mount = mountRef.current!
@@ -527,6 +527,7 @@ export default function Scene3D() {
               >
                 <option value="gable">Gable</option>
                 <option value="hip">Hip</option>
+                <option value="shed">Shed</option>
                 <option value="flat">Flat</option>
               </select>
               {roof.style !== 'flat' && (
@@ -547,20 +548,39 @@ export default function Scene3D() {
                       </option>
                     ))}
                   </select>
-                  <select
-                    value={roof.ridge ?? 'auto'}
-                    title="Ridge direction"
-                    onChange={(e) => {
-                      const st = useStore.getState()
-                      const b = st.project.buildings[focus.index]
-                      st.checkpoint()
-                      st.updateBuilding(b.id, { roof: { ...b.roof, ridge: e.target.value as any } })
-                    }}
-                  >
-                    <option value="auto">Ridge: auto</option>
-                    <option value="ew">Ridge ↔</option>
-                    <option value="ns">Ridge ↕</option>
-                  </select>
+                  {roof.style === 'gable' && (
+                    <select
+                      value={roof.ridge ?? 'auto'}
+                      title="Ridge direction"
+                      onChange={(e) => {
+                        const st = useStore.getState()
+                        const b = st.project.buildings[focus.index]
+                        st.checkpoint()
+                        st.updateBuilding(b.id, { roof: { ...b.roof, ridge: e.target.value as any } })
+                      }}
+                    >
+                      <option value="auto">Ridge: auto</option>
+                      <option value="ew">Ridge ↔</option>
+                      <option value="ns">Ridge ↕</option>
+                    </select>
+                  )}
+                  {roof.style === 'shed' && (
+                    <select
+                      value={roof.shedLow ?? 's'}
+                      title="Shed low side"
+                      onChange={(e) => {
+                        const st = useStore.getState()
+                        const b = st.project.buildings[focus.index]
+                        st.checkpoint()
+                        st.updateBuilding(b.id, { roof: { ...b.roof, shedLow: e.target.value as any } })
+                      }}
+                    >
+                      <option value="n">Low: N</option>
+                      <option value="s">Low: S</option>
+                      <option value="e">Low: E</option>
+                      <option value="w">Low: W</option>
+                    </select>
+                  )}
                 </>
               )}
               <select

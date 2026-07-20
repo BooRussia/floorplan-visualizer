@@ -19,6 +19,8 @@ export interface Wall {
   fence?: FenceType
   /** Invisible room divider: splits rooms for names/areas/materials; no 3D geometry. */
   divider?: boolean
+  /** Roof directive for exterior walls: 'gable' makes this wall a gable end (default eave). */
+  roofEdge?: 'gable'
 }
 
 export type OpeningType =
@@ -134,7 +136,7 @@ export interface Floor {
   roads: Road[]
 }
 
-export type RoofStyle = 'flat' | 'gable' | 'hip'
+export type RoofStyle = 'flat' | 'gable' | 'hip' | 'shed'
 export type RoofMaterial = 'shingles' | 'metal'
 
 export type SidingType = 'paint' | 'lap' | 'board-batten' | 'metal' | 'brick' | 'stone'
@@ -156,6 +158,8 @@ export interface RoofSpec {
   material: RoofMaterial
   /** ridge direction: auto = along the longer side */
   ridge?: 'auto' | 'ew' | 'ns'
+  /** shed roofs: which side is the low eave */
+  shedLow?: 'n' | 's' | 'e' | 'w'
 }
 
 /** A building placed on the plot. Floor geometry is in building-local inches. */
@@ -321,6 +325,7 @@ export function migrateProject(raw: any): Project | null {
           pitch: typeof b.roof?.pitch === 'number' ? b.roof.pitch : 4,
           material: b.roof?.material ?? 'shingles',
           ridge: b.roof?.ridge ?? 'auto',
+          ...(b.roof?.shedLow ? { shedLow: b.roof.shedLow } : {}),
         },
         ...(b.siding && typeof b.siding.color === 'string'
           ? { siding: b.siding as SidingSpec }

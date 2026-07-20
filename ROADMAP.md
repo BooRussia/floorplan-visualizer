@@ -7,9 +7,12 @@
 > dividers, auto exterior dimension strings w/ click-to-stretch resize, print/PDF sheet,
 > PNG export; shared rasterizer extracted to `src/model/raster.ts`), and
 > **Phase 2** (window styles w/ sill+head heights, pocket + barn doors, exterior siding
-> w/ wainscot band + trim color incl. gable ends, per-room interior wall paint).
-> Leftovers rolled forward: interior auto-dims, blueprint display style, corner boards.
-> Next: Phase 3 (roof v2 — footprint-true roofs with valleys via distance transform).
+> w/ wainscot band + trim color incl. gable ends, per-room interior wall paint), and
+> **Phase 3 core** (roof v2: distance-transform footprint roofs with hips/ridges/valleys,
+> per-wall gable directives via Wall.roofEdge, shed style w/ low side, fascia + soffit,
+> siding-clad gable skirts; legacy bbox prism kept as fallback). Phase 3 leftovers:
+> 3.4 skylights + dormers. Other leftovers: interior auto-dims, blueprint style, corner
+> boards. Next: Phase 4 (L/U stairs + landings, railings/guardrails).
 >
 > Basis: three competitive research sweeps (July 2026) covering
 > **consumer floorplanners** (RoomSketcher, Floorplanner, Planner 5D, HomeByMe, Coohom),

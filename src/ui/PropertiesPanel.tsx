@@ -400,6 +400,7 @@ export default function PropertiesPanel() {
               >
                 <option value="gable">Gable</option>
                 <option value="hip">Hip</option>
+                <option value="shed">Shed</option>
                 <option value="flat">Flat</option>
               </select>
               {b.roof.style !== 'flat' && (
@@ -417,17 +418,33 @@ export default function PropertiesPanel() {
                       </option>
                     ))}
                   </select>
-                  <select
-                    value={b.roof.ridge ?? 'auto'}
-                    onChange={(e) => {
-                      st.checkpoint()
-                      st.updateBuilding(b.id, { roof: { ...b.roof, ridge: e.target.value as any } })
-                    }}
-                  >
-                    <option value="auto">Ridge: auto</option>
-                    <option value="ew">Ridge ↔</option>
-                    <option value="ns">Ridge ↕</option>
-                  </select>
+                  {b.roof.style === 'gable' && (
+                    <select
+                      value={b.roof.ridge ?? 'auto'}
+                      onChange={(e) => {
+                        st.checkpoint()
+                        st.updateBuilding(b.id, { roof: { ...b.roof, ridge: e.target.value as any } })
+                      }}
+                    >
+                      <option value="auto">Ridge: auto</option>
+                      <option value="ew">Ridge ↔</option>
+                      <option value="ns">Ridge ↕</option>
+                    </select>
+                  )}
+                  {b.roof.style === 'shed' && (
+                    <select
+                      value={b.roof.shedLow ?? 's'}
+                      onChange={(e) => {
+                        st.checkpoint()
+                        st.updateBuilding(b.id, { roof: { ...b.roof, shedLow: e.target.value as any } })
+                      }}
+                    >
+                      <option value="n">Low side: N</option>
+                      <option value="s">Low side: S</option>
+                      <option value="e">Low side: E</option>
+                      <option value="w">Low side: W</option>
+                    </select>
+                  )}
                 </>
               )}
               <select
@@ -820,9 +837,27 @@ export default function PropertiesPanel() {
               )}
             </div>
           </div>
+          {!isPlot && !w.divider && (
+            <label className="prop-field">
+              <span>Roof edge</span>
+              <select
+                value={w.roofEdge ?? 'eave'}
+                onChange={(e) => {
+                  st.checkpoint()
+                  st.updateWall(w.id, {
+                    roofEdge: e.target.value === 'gable' ? 'gable' : undefined,
+                  })
+                }}
+              >
+                <option value="eave">Eave (roof slopes down here)</option>
+                <option value="gable">Gable end (peak wall)</option>
+              </select>
+            </label>
+          )}
           <p className="props-tip">
             Drag the round handle at the wall's midpoint to curve it. Drag the square end
             handles to reshape — connected walls follow.
+            {!isPlot && ' Mark exterior walls as gable ends to steer the roof.'}
           </p>
           <button className="danger-btn" onClick={() => st.deleteSelected()}>
             Delete wall

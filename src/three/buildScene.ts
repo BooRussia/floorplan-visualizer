@@ -23,6 +23,7 @@ import {
   tintedMaterial,
 } from './materials'
 import { buildFurniture } from './furniture3d'
+import { buildRasterRoof, wallsBBox } from './roof'
 import { outsideAt, rasterizeFloor, regionAt, type FloorRaster } from '../model/raster'
 import {
   buildBoundaryLines,
@@ -1138,27 +1139,21 @@ function buildBuilding(
     // pitched roof over the top story: prefer the story's own sealed outline
     // (e.g. the apartment) — the deck around it stays a flat roof
     if (enclosed && isTop && b.roof.style !== 'flat') {
-      const roofWalls = own && own.enclosed && floor.walls.length ? floor.walls : footprintWalls
-      let x0 = Infinity,
-        z0 = Infinity,
-        x1 = -Infinity,
-        z1 = -Infinity
-      for (const w of roofWalls) {
-        for (const p of [w.a, w.b]) {
-          x0 = Math.min(x0, p.x)
-          z0 = Math.min(z0, p.y)
-          x1 = Math.max(x1, p.x)
-          z1 = Math.max(z1, p.y)
-        }
+      const roofWalls = own && own.enclosed && geomWalls.length ? geomWalls : footprintWalls
+      // footprint-true roof (hips/ridges/valleys via distance transform);
+      // falls back to the legacy bbox prism if the footprint can't be rasterized
+      const ok = buildRasterRoof(fg, roofWalls, wallTop, b.roof, { gable: b.siding })
+      if (!ok) {
+        const bounds = wallsBBox(roofWalls)
+        if (bounds)
+          buildPitchedRoof(
+            fg,
+            bounds,
+            wallTop,
+            b.roof,
+            b.siding ? sidingMaterial(b.siding.type, b.siding.color, true) : undefined
+          )
       }
-      if (x1 > x0 && z1 > z0)
-        buildPitchedRoof(
-          fg,
-          { x0, z0, x1, z1 },
-          wallTop,
-          b.roof,
-          b.siding ? sidingMaterial(b.siding.type, b.siding.color, true) : undefined
-        )
     }
 
     for (const f of floor.furniture) {

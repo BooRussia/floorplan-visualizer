@@ -45,6 +45,20 @@ Inside a building, the **floor material paint tool** (`P`) drops a material mark
 room — wood, tile, carpet, concrete, or stone — and the whole room gets that floor in 3D
 (rooms are detected automatically from your walls).
 
+## Real roofs
+
+Closed-exterior roofs follow the **true footprint**, not a bounding box: L, T, and
+U-shaped buildings get correct hips, ridges, and **valleys** automatically (a
+distance-field solver — every roof point rises with its distance from the nearest eave).
+
+- **Styles**: gable, hip, **shed** (pick the low side), or flat — with any pitch from
+  2:12 to 12:12 and shingle or metal surfaces.
+- **Per-wall gable ends**: select any exterior wall and set *Roof edge → Gable end* to
+  run a ridge out to that wall (Chief Architect-style roof directives). With none marked,
+  gable ends land on the ridge-direction ends automatically.
+- **Eave detail**: 10" overhangs with fascia in the trim color, level soffits, and
+  gable-end walls that fill to the ridge **in the building's siding**.
+
 ## Openings & finishes
 
 - **Window styles** — slider, single-hung, casement, fixed, or picture, each with its own
