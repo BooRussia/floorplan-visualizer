@@ -437,6 +437,146 @@ function staircase(g: G, w: number, d: number, h: number) {
   g.add(rail)
 }
 
+/** Shared step-run helper: a flight climbing from y0 along an axis. */
+function flight(
+  g: G,
+  opts: {
+    axis: 'x' | 'z'
+    dir: 1 | -1
+    /** start of the run along the axis (bottom of the flight) */
+    s0: number
+    /** cross-axis center + width of the flight */
+    cross: number
+    width: number
+    treads: number
+    treadDepth: number
+    riserH: number
+    y0: number
+  }
+) {
+  const { axis, dir, s0, cross, width, treads, treadDepth, riserH, y0 } = opts
+  for (let i = 0; i < treads; i++) {
+    const stepH = y0 + riserH * (i + 1)
+    const s = s0 + dir * (treadDepth * i + treadDepth / 2)
+    const x = axis === 'z' ? cross : s
+    const z = axis === 'z' ? s : cross
+    const sw = axis === 'z' ? width - 3 : treadDepth + 0.05
+    const sd = axis === 'z' ? treadDepth + 0.05 : width - 3
+    box(g, MAT.wood, sw, stepH, sd, x, 0, z)
+  }
+}
+
+/** Guard rail posts + top rail along a straight edge (interior guard, 42"). */
+function guardRun(
+  g: G,
+  a: { x: number; z: number },
+  b: { x: number; z: number },
+  y: number,
+  h = 42
+) {
+  const len = Math.hypot(b.x - a.x, b.z - a.z)
+  if (len < 4) return
+  const ang = Math.atan2(b.z - a.z, b.x - a.x)
+  const posts = Math.max(2, Math.round(len / 48) + 1)
+  for (let i = 0; i < posts; i++) {
+    const t = i / (posts - 1)
+    cyl(g, MAT.steel, 0.7, 0.7, h, a.x + (b.x - a.x) * t, y, a.z + (b.z - a.z) * t, 8)
+  }
+  for (const ry of [y + h, y + h * 0.55]) {
+    const r = new THREE.Mesh(new THREE.BoxGeometry(len, ry === y + h ? 2 : 1.2, 1.6), MAT.wood)
+    r.position.set((a.x + b.x) / 2, ry, (a.z + b.z) / 2)
+    r.rotation.y = -ang
+    r.castShadow = true
+    g.add(r)
+  }
+}
+
+/** L-shaped stair: flight along -z, square landing, flight along +x. */
+function staircaseL(g: G, w: number, d: number, h: number) {
+  const risers = Math.max(3, Math.ceil(h / 7.75))
+  const rh = h / risers
+  const LW = Math.max(24, Math.min(w, d) * 0.4)
+  const runA = Math.max(10, d - LW)
+  const runB = Math.max(10, w - LW)
+  const T = risers - 1
+  let tA = Math.max(1, Math.round((T * runA) / (runA + runB)))
+  let tB = Math.max(1, T - tA)
+  if (tA + tB > T) tA = T - tB
+  const tdA = runA / tA
+  const tdB = runB / tB
+  const xL = -w / 2 + LW / 2 // center of the lower flight
+  const zL = -d / 2 + LW / 2 // center of the landing row
+
+  flight(g, { axis: 'z', dir: -1, s0: d / 2, cross: xL, width: LW, treads: tA, treadDepth: tdA, riserH: rh, y0: 0 })
+  // landing platform at the turn
+  const landY = rh * tA
+  box(g, MAT.wood, LW, landY, LW, xL, 0, zL)
+  flight(g, {
+    axis: 'x',
+    dir: 1,
+    s0: -w / 2 + LW,
+    cross: zL,
+    width: LW,
+    treads: tB,
+    treadDepth: tdB,
+    riserH: rh,
+    y0: landY,
+  })
+  // guard along the open sides of both flights
+  guardRun(g, { x: xL + LW / 2, z: d / 2 }, { x: xL + LW / 2, z: -d / 2 + LW }, h * 0.5, 34)
+  guardRun(g, { x: -w / 2 + LW, z: zL + LW / 2 }, { x: w / 2, z: zL + LW / 2 }, h * 0.82, 34)
+}
+
+/** U-shaped stair: two parallel flights with a landing across the back. */
+function staircaseU(g: G, w: number, d: number, h: number) {
+  const risers = Math.max(4, Math.ceil(h / 7.75))
+  const rh = h / risers
+  const LD = Math.max(30, Math.min(48, d * 0.28)) // landing depth
+  const run = Math.max(10, d - LD)
+  const T = risers - 1
+  const tA = Math.max(1, Math.ceil(T / 2))
+  const tB = Math.max(1, T - tA)
+  const td = run / Math.max(tA, tB)
+  const legW = w / 2
+  const zLand = -d / 2 + LD / 2
+
+  flight(g, { axis: 'z', dir: -1, s0: d / 2, cross: -legW / 2, width: legW, treads: tA, treadDepth: td, riserH: rh, y0: 0 })
+  const landY = rh * tA
+  box(g, MAT.wood, w, landY, LD, 0, 0, zLand)
+  flight(g, {
+    axis: 'z',
+    dir: 1,
+    s0: -d / 2 + LD,
+    cross: legW / 2,
+    width: legW,
+    treads: tB,
+    treadDepth: td,
+    riserH: rh,
+    y0: landY,
+  })
+  // center stringer wall between the flights + outer guards
+  box(g, MAT.white, 3, h * 0.9, run, 0, 0, -d / 2 + LD + run / 2)
+  guardRun(g, { x: -w / 2, z: d / 2 }, { x: -w / 2, z: -d / 2 + LD }, h * 0.4, 34)
+  guardRun(g, { x: w / 2, z: -d / 2 + LD }, { x: w / 2, z: d / 2 }, h * 0.75, 34)
+}
+
+/** Straight guardrail: posts, top rail, and balusters (mezzanine / stairwell guard). */
+function railing(g: G, w: number, _d: number, h: number) {
+  const postR = 0.85
+  const posts = Math.max(2, Math.round(w / 48) + 1)
+  for (let i = 0; i < posts; i++) {
+    const x = -w / 2 + (w * i) / (posts - 1)
+    cyl(g, MAT.steel, postR, postR, h, x, 0, 0, 10)
+  }
+  const balusters = Math.max(2, Math.floor(w / 5))
+  for (let i = 1; i < balusters; i++) {
+    const x = -w / 2 + (w * i) / balusters
+    cyl(g, MAT.steel, 0.32, 0.32, h - 3, x, 0, 0, 6)
+  }
+  box(g, MAT.wood, w, 2.2, 3.2, 0, h - 2.2) // top rail
+  box(g, MAT.steel, w, 1, 1.2, 0, h * 0.45) // mid rail
+}
+
 // ---------- garage & vehicles ----------
 // Vehicles face -z (nose toward the 2D glyph's arrow/bow side).
 
@@ -726,6 +866,9 @@ function mailbox(g: G, w: number, d: number, h: number) {
 
 const builders: Record<string, (g: G, w: number, d: number, h: number) => void> = {
   staircase,
+  'staircase-l': staircaseL,
+  'staircase-u': staircaseU,
+  railing,
   'tree-oak': treeOak,
   'tree-pine': treePine,
   shrub,

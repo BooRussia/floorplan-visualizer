@@ -10,9 +10,11 @@
 > w/ wainscot band + trim color incl. gable ends, per-room interior wall paint), and
 > **Phase 3 core** (roof v2: distance-transform footprint roofs with hips/ridges/valleys,
 > per-wall gable directives via Wall.roofEdge, shed style w/ low side, fascia + soffit,
-> siding-clad gable skirts; legacy bbox prism kept as fallback). Phase 3 leftovers:
-> 3.4 skylights + dormers. Other leftovers: interior auto-dims, blueprint style, corner
-> boards. Next: Phase 4 (L/U stairs + landings, railings/guardrails).
+> siding-clad gable skirts; legacy bbox prism kept as fallback), and
+> **Phase 4** (L/U stairs with landings auto-sized from the story rise, guardrail item,
+> one-click guards around open-to-below regions + stairwell openings with the stair
+> walk-off left open). Leftovers: 3.4 skylights + dormers, interior auto-dims, blueprint
+> style, corner boards. Next: Phase 5 (walkthrough, saved cameras, sun, glTF/PNG export).
 >
 > Basis: three competitive research sweeps (July 2026) covering
 > **consumer floorplanners** (RoomSketcher, Floorplanner, Planner 5D, HomeByMe, Coohom),

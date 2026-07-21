@@ -45,6 +45,20 @@ Inside a building, the **floor material paint tool** (`P`) drops a material mark
 room — wood, tile, carpet, concrete, or stone — and the whole room gets that floor in 3D
 (rooms are detected automatically from your walls).
 
+## Stairs & guardrails
+
+- **Straight, L-shaped, and U-shaped stairs** in the Structure library. Drop one and it
+  sizes itself from the story height — risers ≤ 7¾", 10½" treads — splitting the run
+  across two flights with a real landing at the turn, drawn with the turning walk-line
+  and UP arrow in 2D and built tread-by-tread with rails in 3D. Change the story height
+  and every stair on the floor re-fits.
+- **Guardrails** — a stretchable railing item (posts, top rail, balusters) for mezzanine
+  edges and stairwell openings.
+- **One-click guards**: on an upper floor, *Add guardrails to open edges* traces the
+  floor's open-to-below regions and the stairwell openings punched by the stairs below,
+  then places railings all the way around them — leaving the walk-off at the top of each
+  stair open so you can actually step onto the floor.
+
 ## Real roofs
 
 Closed-exterior roofs follow the **true footprint**, not a bounding box: L, T, and

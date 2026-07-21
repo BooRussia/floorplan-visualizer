@@ -23,19 +23,14 @@ import {
   type Tool,
   type Wall,
 } from './types'
-import { catalogItem } from './catalog'
+import { catalogItem, isStairKind, stairFootprint } from './catalog'
+import { openEdgeGuards } from './guards'
 import { SAMPLE_PROJECT } from './samplePlan'
+
+export { stairSpecs, isStairKind, stairFootprint } from './catalog'
 
 const STORAGE_KEY = 'floorplan-visualizer-project-v3'
 const LEGACY_KEY = 'floorplan-visualizer-plan-v1'
-
-/** Stair sizing from total rise: risers ≤ 7¾", treads 10½". */
-export function stairSpecs(totalRise: number) {
-  const risers = Math.max(2, Math.ceil(totalRise / 7.75))
-  const treadDepth = 10.5
-  const treads = risers - 1
-  return { risers, treads, treadDepth, run: treads * treadDepth, riserHeight: totalRise / risers }
-}
 
 interface StoreState {
   project: Project
@@ -96,6 +91,8 @@ interface StoreState {
   addOpening: (o: Omit<Opening, 'id'>) => string
   updateOpening: (id: string, patch: Partial<Opening>) => void
   addFurniture: (kind: string, x: number, y: number, rot?: number) => string
+  /** Drop guardrails along this floor's open-to-below edges + stairwell holes. Returns count. */
+  addOpenEdgeGuards: () => number
   updateFurniture: (id: string, patch: Partial<Furniture>) => void
   addLabel: (x: number, y: number, text?: string) => string
   updateLabel: (id: string, patch: Partial<Label>) => void
@@ -415,15 +412,44 @@ export const useStore = create<StoreState>((set, get) => {
       const id = uid('furn')
       const s = get()
       let { w, d, h } = item
-      if (kind === 'staircase' && s.mode.scope === 'building') {
+      if (isStairKind(kind) && s.mode.scope === 'building') {
         const floor = floorFor(s)
-        const specs = stairSpecs(floor.height + STORY_GAP)
-        d = specs.run
-        h = floor.height + STORY_GAP
+        const rise = floor.height + STORY_GAP
+        const fit = stairFootprint(kind, rise)
+        w = fit.w
+        d = fit.d
+        h = rise
       }
       const furn: Furniture = { id, kind, x, y, rot, w, d, h }
       onFloor((f) => ({ ...f, furniture: [...f.furniture, furn] }))
       return id
+    },
+    addOpenEdgeGuards: () => {
+      const s = get()
+      if (s.mode.scope !== 'building') return 0
+      const b = s.project.buildings[s.mode.index]
+      const k = Math.min(s.activeFloor, b.floors.length - 1)
+      const floor = b.floors[k]
+      const belowFloor = k > 0 ? b.floors[k - 1] : null
+      const segs = openEdgeGuards(
+        floor,
+        belowFloor?.furniture ?? [],
+        belowFloor?.walls.filter((w) => !w.divider) ?? []
+      )
+      if (!segs.length) return 0
+      s.checkpoint()
+      const items: Furniture[] = segs.map((sg) => ({
+        id: uid('furn'),
+        kind: 'railing',
+        x: Math.round(sg.x),
+        y: Math.round(sg.y),
+        rot: sg.rot,
+        w: Math.round(sg.w),
+        d: 4,
+        h: 42,
+      }))
+      onFloor((f) => ({ ...f, furniture: [...f.furniture, ...items] }))
+      return items.length
     },
     updateFurniture: (id, patch) =>
       onFloor((f) => ({

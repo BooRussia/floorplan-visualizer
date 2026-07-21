@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { stairSpecs, useActiveFloor, useStore } from '../model/store'
+import { isStairKind, stairFootprint, stairSpecs, useActiveFloor, useStore } from '../model/store'
 import { catalogItem } from '../model/catalog'
 import { dist, fmtLenShort, norm, parseLen, polygonArea, roadLength, scale, sub, add } from '../model/geometry'
 import { rasterizeFloor, regionAt, roomRegions } from '../model/raster'
@@ -671,9 +671,11 @@ export default function PropertiesPanel() {
               st.updateFloor(activeFloor, { height: h })
               // re-run staircases on this floor for the new rise
               const rise = h + STORY_GAP
-              const specs = stairSpecs(rise)
               for (const f of floor.furniture) {
-                if (f.kind === 'staircase') st.updateFurniture(f.id, { d: specs.run, h: rise })
+                if (isStairKind(f.kind)) {
+                  const fit = stairFootprint(f.kind, rise)
+                  st.updateFurniture(f.id, { w: fit.w, d: fit.d, h: rise })
+                }
               }
             }}
           />
@@ -698,6 +700,22 @@ export default function PropertiesPanel() {
               <span>Measure marks</span>
               <b>{floor.guides.length}</b>
             </div>
+          )}
+          {(floor.paints?.some((p) => p.material === 'open') ||
+            (activeFloor > 0 &&
+              project.buildings[(mode as any).index].floors[activeFloor - 1].furniture.some((f) =>
+                isStairKind(f.kind)
+              ))) && (
+            <button
+              className="mini-btn"
+              onClick={() => {
+                const n = st.addOpenEdgeGuards()
+                if (!n) alert('No open edges found on this floor.')
+              }}
+              title="Place guardrails along open-to-below edges and stairwell openings"
+            >
+              ⛓ Add guardrails to open edges
+            </button>
           )}
           {floorCount < MAX_FLOORS && (
             <button className="mini-btn" onClick={() => st.addFloor()}>
@@ -1025,7 +1043,7 @@ export default function PropertiesPanel() {
     const f = floor.furniture.find((x) => x.id === selection.id)
     if (!f) return null
     const item = catalogItem(f.kind)
-    const isStair = f.kind === 'staircase'
+    const isStair = isStairKind(f.kind)
     const stairInfo = isStair
       ? (() => {
           const risers = Math.max(2, Math.ceil(f.h / 7.75))

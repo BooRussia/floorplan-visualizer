@@ -24,6 +24,7 @@ import {
 } from './materials'
 import { buildFurniture } from './furniture3d'
 import { buildRasterRoof, wallsBBox } from './roof'
+import { isStairKind } from '../model/catalog'
 import { outsideAt, rasterizeFloor, regionAt, type FloorRaster } from '../model/raster'
 import {
   buildBoundaryLines,
@@ -1076,7 +1077,7 @@ function buildBuilding(
     const fg = new THREE.Group()
     fg.position.y = elevation
 
-    const holes = k > 0 ? b.floors[k - 1].furniture.filter((f) => f.kind === 'staircase') : []
+    const holes = k > 0 ? b.floors[k - 1].furniture.filter((f) => isStairKind(f.kind)) : []
     // top floor of an enclosed building gets a roof at its wall height
     const isTop = k === b.floors.length - 1
     const wallTop = floor.walls.reduce((m, w) => Math.max(m, w.height), floor.height)

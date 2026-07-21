@@ -57,6 +57,80 @@ export function Glyph({ kind, w, d }: { kind: string; w: number; d: number }) {
         </g>
       )
     }
+    case 'staircase-l': {
+      // lower flight up (-y) in the left leg, landing at back-left, upper flight to +x
+      const LW = Math.max(24, Math.min(w, d) * 0.4)
+      const runA = d - LW
+      const runB = w - LW
+      const tA = Math.max(1, Math.round(runA / 10.5))
+      const tB = Math.max(1, Math.round(runB / 10.5))
+      const xL = -hw + LW
+      const yL = -hd + LW
+      return (
+        <g>
+          {/* L outline */}
+          <path
+            d={`M ${-hw} ${hd} L ${xL} ${hd} L ${xL} ${yL} L ${hw} ${yL} L ${hw} ${-hd} L ${-hw} ${-hd} Z`}
+            style={thin}
+          />
+          {Array.from({ length: tA }, (_, i) => {
+            const y = hd - ((i + 1) * runA) / tA
+            return <line key={`a${i}`} x1={-hw} y1={y} x2={xL} y2={y} style={thinNoFill} />
+          })}
+          {Array.from({ length: tB }, (_, i) => {
+            const x = -hw + LW + ((i + 1) * runB) / tB
+            return <line key={`b${i}`} x1={x} y1={yL} x2={x} y2={-hd} style={thinNoFill} />
+          })}
+          {/* walk line turning at the landing */}
+          <path
+            d={`M ${-hw + LW / 2} ${hd - 4} L ${-hw + LW / 2} ${-hd + LW / 2} L ${hw - 8} ${-hd + LW / 2}`}
+            style={{ ...thinNoFill, fill: 'none' }}
+          />
+          <path d={`M ${hw - 11} ${-hd + LW / 2 - 3.5} L ${hw - 5} ${-hd + LW / 2} L ${hw - 11} ${-hd + LW / 2 + 3.5}`} style={{ ...thinNoFill, fill: 'none' }} />
+          <circle cx={-hw + LW / 2} cy={hd - 4} r={1.6} style={{ ...thin, fill: stroke }} />
+        </g>
+      )
+    }
+    case 'staircase-u': {
+      const LD = Math.max(30, Math.min(48, d * 0.28))
+      const run = d - LD
+      const t = Math.max(1, Math.round(run / 10.5))
+      const yL = -hd + LD
+      return (
+        <g>
+          <Rect w={w} d={d} />
+          <line x1={-hw} y1={yL} x2={hw} y2={yL} style={thinNoFill} />
+          {Array.from({ length: t }, (_, i) => {
+            const y = hd - ((i + 1) * run) / t
+            return (
+              <g key={i}>
+                <line x1={-hw} y1={y} x2={0} y2={y} style={thinNoFill} />
+                <line x1={0} y1={y} x2={hw} y2={y} style={thinNoFill} />
+              </g>
+            )
+          })}
+          <line x1={0} y1={yL} x2={0} y2={hd} style={thin} />
+          <path
+            d={`M ${-hw / 2} ${hd - 4} L ${-hw / 2} ${yL - LD / 2 + LD / 2} L ${hw / 2} ${yL - LD / 2 + LD / 2} L ${hw / 2} ${hd - 8}`}
+            style={{ ...thinNoFill, fill: 'none' }}
+          />
+          <path d={`M ${hw / 2 - 3.5} ${hd - 11} L ${hw / 2} ${hd - 5} L ${hw / 2 + 3.5} ${hd - 11}`} style={{ ...thinNoFill, fill: 'none' }} />
+          <circle cx={-hw / 2} cy={hd - 4} r={1.6} style={{ ...thin, fill: stroke }} />
+        </g>
+      )
+    }
+    case 'railing': {
+      const posts = Math.max(2, Math.round(w / 48) + 1)
+      return (
+        <g>
+          <line x1={-hw} y1={0} x2={hw} y2={0} style={{ ...thin, strokeWidth: 2 }} />
+          {Array.from({ length: posts }, (_, i) => {
+            const x = -hw + (w * i) / (posts - 1)
+            return <circle key={i} cx={x} cy={0} r={1.8} style={{ ...thin, fill: stroke }} />
+          })}
+        </g>
+      )
+    }
     case 'base-cabinet':
       return (
         <g>

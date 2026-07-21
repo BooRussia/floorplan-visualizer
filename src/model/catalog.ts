@@ -20,6 +20,9 @@ export const CATALOG: CatalogCategory[] = [
     items: [
       // depth (run) and height are auto-computed from the floor's height when placed
       { kind: 'staircase', name: 'Staircase', w: 36, d: 136, h: 106 },
+      { kind: 'staircase-l', name: 'L-stair + landing', w: 78, d: 114, h: 106 },
+      { kind: 'staircase-u', name: 'U-stair + landing', w: 72, d: 118, h: 106 },
+      { kind: 'railing', name: 'Guardrail', w: 96, d: 4, h: 42 },
     ],
   },
   {
@@ -124,3 +127,32 @@ for (const cat of CATALOG) for (const it of cat.items) byKind.set(it.kind, it)
 
 export const catalogItem = (kind: string): CatalogItem =>
   byKind.get(kind) ?? { kind, name: kind, w: 24, d: 24, h: 24 }
+
+/** Stair sizing from total rise: risers ≤ 7¾", treads 10½". */
+export function stairSpecs(totalRise: number) {
+  const risers = Math.max(2, Math.ceil(totalRise / 7.75))
+  const treadDepth = 10.5
+  const treads = risers - 1
+  return { risers, treads, treadDepth, run: treads * treadDepth, riserHeight: totalRise / risers }
+}
+
+export const isStairKind = (kind: string) =>
+  kind === 'staircase' || kind === 'staircase-l' || kind === 'staircase-u'
+
+/** Footprint that fits a stair of this kind at the given total rise. */
+export function stairFootprint(kind: string, rise: number): { w: number; d: number } {
+  const { risers, treadDepth, run } = stairSpecs(rise)
+  const LEG = 36
+  if (kind === 'staircase-l') {
+    const T = risers - 1
+    const tA = Math.ceil(T / 2)
+    const tB = Math.max(1, T - tA)
+    return { w: Math.round(LEG + tB * treadDepth), d: Math.round(LEG + tA * treadDepth) }
+  }
+  if (kind === 'staircase-u') {
+    const T = risers - 1
+    const tA = Math.ceil(T / 2)
+    return { w: LEG * 2, d: Math.round(40 + tA * treadDepth) }
+  }
+  return { w: LEG, d: Math.round(run) }
+}
