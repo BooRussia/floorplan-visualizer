@@ -13,8 +13,11 @@
 > siding-clad gable skirts; legacy bbox prism kept as fallback), and
 > **Phase 4** (L/U stairs with landings auto-sized from the story rise, guardrail item,
 > one-click guards around open-to-below regions + stairwell openings with the stair
-> walk-off left open). Leftovers: 3.4 skylights + dormers, interior auto-dims, blueprint
-> style, corner boards. Next: Phase 5 (walkthrough, saved cameras, sun, glTF/PNG export).
+> walk-off left open), and
+> **Phase 5** (first-person walkthrough, saved cameras w/ fly tween + tour, sun /
+> time-of-day with in-place relighting, PNG snapshot + GLB export). Leftovers: 3.4
+> skylights + dormers, interior auto-dims, blueprint style, corner boards.
+> Next: Phase 6 (image underlay tracing, DXF export, multi-project, share links).
 >
 > Basis: three competitive research sweeps (July 2026) covering
 > **consumer floorplanners** (RoomSketcher, Floorplanner, Planner 5D, HomeByMe, Coohom),

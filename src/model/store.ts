@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import {
   emptyBuilding,
   emptyFloor,
+  DEFAULT_SUN,
   emptyProject,
   migrateProject,
   MAX_BUILDINGS,
@@ -70,6 +71,11 @@ interface StoreState {
     terrain?: import('./types').TerrainGrid
     buildings?: Building[]
   }) => void
+  /** 3D view settings (never trigger a scene rebuild — see Scene3D's geometry guard) */
+  setSun: (patch: Partial<import('./types').SunSpec>, checkpoint?: boolean) => void
+  addCamera: (cam: Omit<import('./types').SavedCamera, 'id'>) => string
+  updateCamera: (id: string, patch: Partial<import('./types').SavedCamera>) => void
+  deleteCamera: (id: string) => void
   addBuilding: (opts?: { w?: number; d?: number; x?: number; y?: number; name?: string }) => void
   updateBuilding: (
     id: string,
@@ -227,6 +233,31 @@ export const useStore = create<StoreState>((set, get) => {
           selection: null,
         }
       })
+    },
+    setSun: (patch, checkpoint = false) => {
+      if (checkpoint) get().checkpoint()
+      set((s) => ({
+        project: { ...s.project, sun: { ...DEFAULT_SUN, ...s.project.sun, ...patch } },
+      }))
+    },
+    addCamera: (cam) => {
+      const id = uid('cam')
+      get().checkpoint()
+      set((s) => ({ project: { ...s.project, cameras: [...(s.project.cameras ?? []), { ...cam, id }] } }))
+      return id
+    },
+    updateCamera: (id, patch) =>
+      set((s) => ({
+        project: {
+          ...s.project,
+          cameras: (s.project.cameras ?? []).map((c) => (c.id === id ? { ...c, ...patch } : c)),
+        },
+      })),
+    deleteCamera: (id) => {
+      get().checkpoint()
+      set((s) => ({
+        project: { ...s.project, cameras: (s.project.cameras ?? []).filter((c) => c.id !== id) },
+      }))
     },
     addBuilding: (opts) => {
       const { project, checkpoint } = get()

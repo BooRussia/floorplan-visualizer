@@ -174,6 +174,33 @@ export interface Building {
   siding?: SidingSpec
 }
 
+/** Sun / time-of-day for the 3D view. Hour is 6..20 (6am..8pm). */
+export interface SunSpec {
+  hour: number
+  shadows: boolean
+}
+
+export const DEFAULT_SUN: SunSpec = { hour: 11, shadows: true }
+
+/** A saved 3D viewpoint. Bookmarks belong to the view they were taken in. */
+export interface SavedCamera {
+  id: string
+  name: string
+  /** camera position + orbit target, world inches */
+  px: number
+  py: number
+  pz: number
+  tx: number
+  ty: number
+  tz: number
+  /** which view it was saved from: 'plot' or a building id (never an index —
+   *  indices shift when a building is deleted and would re-point the bookmark) */
+  scope: string
+  /** closed-exterior toggle and floor isolation at save time */
+  closed: boolean
+  vis: 'all' | number
+}
+
 /** Geographic anchor: plot-local (0,0) sits at this lat/lon corner, north-up (+y = south). */
 export interface GeoAnchor {
   lat: number
@@ -199,6 +226,9 @@ export interface Project {
   plotBoundary?: Pt[][]
   geo?: GeoAnchor
   terrain?: TerrainGrid
+  /** 3D view settings — not geometry, so changing these never rebuilds the scene */
+  sun?: SunSpec
+  cameras?: SavedCamera[]
   /** landscaping layer: walls double as fence lines, furniture as landscape items/surfaces */
   site: Floor
   buildings: Building[]
@@ -312,6 +342,21 @@ export function migrateProject(raw: any): Project | null {
         ? { geo: { lat: raw.geo.lat, lon: raw.geo.lon } }
         : {}),
       ...(terrain ? { terrain } : {}),
+      ...(typeof raw.sun?.hour === 'number'
+        ? { sun: { hour: raw.sun.hour, shadows: raw.sun.shadows !== false } }
+        : {}),
+      ...(Array.isArray(raw.cameras)
+        ? {
+            // scope must be a building id or 'plot'; drop pre-id bookmarks
+            cameras: raw.cameras.filter(
+              (c: any) =>
+                c &&
+                typeof c.id === 'string' &&
+                typeof c.scope === 'string' &&
+                ['px', 'py', 'pz', 'tx', 'ty', 'tz'].every((k) => typeof c[k] === 'number')
+            ),
+          }
+        : {}),
       site: raw.site ? migrateFloor(raw.site, 0) : { ...emptyFloor(1), name: 'Site' },
       buildings: raw.buildings.slice(0, MAX_BUILDINGS).map((b: any, i: number) => ({
         id: b.id ?? uid('bldg'),

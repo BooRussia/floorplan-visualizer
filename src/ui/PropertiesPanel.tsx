@@ -143,6 +143,7 @@ function SidingSection({
         <input
           type="checkbox"
           checked={!!siding.wainscot}
+          onKeyDown={(e) => e.stopPropagation()}
           onChange={(e) =>
             onChange({
               ...siding,
@@ -1141,6 +1142,7 @@ export default function PropertiesPanel() {
               min={5}
               max={24}
               value={l.size}
+              onKeyDown={(e) => e.stopPropagation()}
               onChange={(e) => st.updateLabel(l.id, { size: Number(e.target.value) })}
             />
           </label>

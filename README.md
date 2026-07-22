@@ -45,6 +45,22 @@ Inside a building, the **floor material paint tool** (`P`) drops a material mark
 room — wood, tile, carpet, concrete, or stone — and the whole room gets that floor in 3D
 (rooms are detected automatically from your walls).
 
+## Seeing it for real
+
+- **Walk through it** — the *Walk* button drops you inside the model at eye height.
+  Mouse to look, WASD or arrows to move, Shift to run, Esc to step back out to exactly
+  the orbit view you left.
+- **Saved views** — *＋ View* bookmarks the current camera by name; click one to fly to
+  it (it restores the floor isolation and open/closed state it was saved with), and
+  *▶ Tour* plays through them. Views are saved with the project and belong to the
+  building — or the plot — you took them in.
+- **Time of day** — the sun slider swings the sun from 6am to 8pm, warming and dimming
+  it near the horizon and stretching the shadows to match; the ☀ button toggles shadows.
+  It relights instantly without rebuilding the model, and it's saved with the project.
+- **Export** — *📷 PNG* downloads a 2× resolution snapshot of the current view, and
+  *⬇ GLB* exports the model as binary glTF, ready to open in Blender, SketchUp, or any
+  3D viewer.
+
 ## Stairs & guardrails
 
 - **Straight, L-shaped, and U-shaped stairs** in the Structure library. Drop one and it
